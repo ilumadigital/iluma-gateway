@@ -97,7 +97,7 @@ check($bad,'Staging subscription rejects unsafe reference');
 $pilotSource=file_get_contents(dirname(__DIR__).'/src/SubscriptionPilot.php');
 check($pilotSource!==false && str_contains($pilotSource,"'renewal_enabled'=>false") &&
  str_contains($pilotSource,"Db::get('staging')"),'Subscription pilot is staging-only with renewals off');
-check(str_contains($pilotSource,"'sandbox-subscription-'.$ref") &&
+check(str_contains($pilotSource,"'sandbox-subscription-'.\$ref") &&
  str_contains($pilotSource,'FOR UPDATE'),'Staging subscription uses stable idempotency key');
 check(str_contains($pilotSource,'contractsForCustomer'),'Nexi contract provider lookup implemented');
 check(str_contains($nexiSource,"'/api/v1/contracts/customers/'"),'Nexi contract lookup route');

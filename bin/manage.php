@@ -5,7 +5,10 @@ use Iluma\Gateway\{Db,Security};
 if(PHP_SAPI!=='cli')exit(1);
 $command=$argv[1]??'';
 if ($command === 'doctor') {
- $ready = true;
+ echo 'CLI PHP: '.PHP_VERSION.PHP_EOL;
+ echo 'PRIVATE ENV FILE: '.(is_file(\Iluma\Gateway\EnvLoader::privateFilePath(dirname(__DIR__)))?'PRESENT':'NOT FOUND (check environment variables)').PHP_EOL;
+ $ready = PHP_VERSION_ID >= 80300;
+ if (!$ready) echo "PHP 8.3+ REQUIRED\n";
  foreach (['registry'=>6,'staging'=>15,'production'=>15] as $name=>$expected) {
   try {
    $db=Db::get($name);$tables=$db->query('SHOW TABLES')->fetchAll();

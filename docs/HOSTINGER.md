@@ -51,6 +51,7 @@ plans; Nginx deployments must use their own server-level rules.
 ## CLI checks, administrator and MFA
 
 From a private SSH session in the deployed project folder, run:
+    php -v
     php bin/manage.php doctor
     php tests/run.php
 
@@ -97,3 +98,21 @@ a PCI scope assessment remain prerequisites.
 - Confirm that https://gateway.iluma.gr/ilm-admin/admin.css is covered by the same access policy.
 - Once the external gate is verified, set ADMIN_ACCESS_VERIFIED=1 in the private file and use the documented SSH admin initialization (password + TOTP).
 - The root path / and direct /public/admin.php must stay 404. No new DNS subdomain is required.
+
+## When CLI doctor prints nothing or admin returns 500
+
+Run the following inside the deployed project directory:
+
+    php -v
+    php -l bin/manage.php
+    php -d display_errors=1 -d display_startup_errors=1 bin/manage.php doctor 2>&1
+    echo "EXIT CODE: $?"
+
+Hostinger's default SSH PHP version can differ from the site's PHP version.
+You can check PHP 8.4 explicitly with /opt/alt/php84/usr/bin/php -v and
+run /opt/alt/php84/usr/bin/php bin/manage.php doctor if installed. The
+configuration loader now prints restricted errors to STDERR for CLI.
+If it reports permissions, ensure the private env file is chmod 600.
+Do not enable display_errors on the public website, show secrets, or move
+private env files into public_html. For web HTTP 500, inspect Hostinger
+PHP error logs; .htaccess server failures may not reach PHP.

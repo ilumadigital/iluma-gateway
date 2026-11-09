@@ -1,0 +1,30 @@
+# Terminate TLS using a correctly configured certificate + trusted proxy network.
+# DO NOT route admin host to the public payment front controller.
+# Public requests to static dotfiles and other paths are always denied.
+server {
+ listen 443 ssl http2;
+ server_name gateway.iluma.gr;
+ root /var/www/iluma-gateway/public;
+ index index.php;
+ ssl_certificate /etc/letsencrypt/live/gateway.iluma.gr/fullchain.pem;
+ ssl_certificate_key /etc/letsencrypt/live/gateway.iluma.gr/privkey.pem;
+ add_header Strict-Transport-Security 'max-age=31536000; includeSubDomains' always;
+ location / { try_files $uri /index.php?$query_string; }
+ location ~ ^/index\.php$ { include fastcgi_params;fastcgi_param SCRIPT_FILENAME $document_root/index.php;fastcgi_pass unix:/run/php/php8.4-fpm.sock; }
+ location ~ \.(?:php|env|sql|ini|log|bak|txt)$ { return 404; }
+ location ~ /\. { return 404; }
+ client_max_body_size 64k;
+}
+server {
+ listen 443 ssl http2;
+ server_name admin.gateway.iluma.gr;
+ root /var/www/iluma-gateway/public;
+ ssl_certificate /etc/letsencrypt/live/admin.gateway.iluma.gr/fullchain.pem;
+ ssl_certificate_key /etc/letsencrypt/live/admin.gateway.iluma.gr/privkey.pem;
+ # MANDATORY: enforce VPN/Zero Trust access gateway here BEFORE enabling admin.
+ # Also enforce login and API rate limits in production.
+ location = /admin.css { try_files $uri =404; }
+ location / { include fastcgi_params;fastcgi_param SCRIPT_FILENAME $document_root/admin.php;fastcgi_pass unix:/run/php/php8.4-fpm.sock; }
+ location ~ /\. { return 404; }
+ client_max_body_size 64k;
+}

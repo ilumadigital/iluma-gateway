@@ -1,0 +1,8 @@
+{
+  "name": "iluma/payment-gateway",
+  "description": "ILUMA Payment Gateway: custom PHP / Nexi XPay Greece",
+  "type": "project",
+  "require": {"php": "^8.3", "ext-pdo": "*", "ext-pdo_mysql": "*", "ext-sodium": "*", "ext-curl": "*", "ext-json": "*"},
+  "autoload": {"psr-4": {"Iluma\\Gateway\\": "src/"}},
+  "scripts": {"lint": "find src public bin tests -name '*.php' -print0 | xargs -0 -n1 php -l", "test": "php tests/run.php"}
+}

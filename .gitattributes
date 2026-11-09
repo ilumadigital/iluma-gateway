@@ -1,0 +1,20 @@
+# Normalize source files across Windows, macOS and Linux.
+* text=auto
+*.php text eol=lf
+*.sql text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.sh text eol=lf
+*.example text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.pdf binary

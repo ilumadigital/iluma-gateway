@@ -46,7 +46,7 @@ if(in_array($command,['sandbox-subscription','sandbox-subscription-status'],true
   $ref=$argv[3]??'';
   $data=$command==='sandbox-subscription'
    ? \Iluma\Gateway\SubscriptionPilot::start($ref)
-   : \Iluma\Gateway\SubscriptionPilot::verifyProviderContract($ref);
+   : \Iluma\Gateway\SubscriptionPilot::status($ref);
   echo Security::json($data),PHP_EOL;
  }catch(\Throwable $e){fwrite(STDERR,'Sandbox subscription error: '.$e->getMessage().PHP_EOL);exit(1);}
  exit;

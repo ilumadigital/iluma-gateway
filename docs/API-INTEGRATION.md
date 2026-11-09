@@ -89,26 +89,26 @@ The iRadios backend must validate signed events, reject replayed nonces, dedupli
 `POST /api/v1/subscriptions/renew`, `POST /api/v1/subscriptions/cancel`, `POST /api/v1/subscriptions/sync`, `POST /api/v1/payment-methods/replace` return HTTP 501 until additional provider-contract behavior and integration tests are verified. They are intentionally **fail-closed**, not mock success endpoints.
 
 
-## CLI-only Staging subscription pilot (L-PREM)
+## Subscription ownership: iRadios controls billing, Gateway executes payments
 
-Source: user-supplied iRadios price list. Listener Premium (L-PREM) is EUR 3.99 per calendar month including 24% VAT, intended for recurring renewal.
+iRadios owns plan terms, prices, subscription lifecycle, next-billing dates, renewal decisions, service access and business statistics. ILUMA Gateway owns signed payment execution, Nexi communications, idempotency, payment confirmation, a financial ledger, and signed notifications. Nexi is the PSP and stores sensitive card data. iRadios and ILUMA must not store raw PAN or CVV; metadata (brand, masked last 4, expiry when supplied) is permitted with appropriate controls.
 
-On the Hostinger Gateway CLI, after Git deployment, use the PHP 8.4 binary:
+For **monthly off-session charging**, Nexi Greece requires a provider-side credential/token reference (called a recurrence contractId) at first consented payment and a subsequent `POST /orders/mit` call. The contractId is **not** a Nexi business subscription or billing scheduler. iRadios remains the owner of renewal dates. This payment-method vaulting/MIT capability is not yet implemented or merchant-validated in ILUMA; there is **no production-ready automatic renewal endpoint**. If the customer authenticates and pays each month, ordinary Hosted Payment Pages do not need a saved-card contract, but that is not automatic renewal.
 
-    /opt/alt/php84/usr/bin/php bin/manage.php sandbox-subscription staging listener-001
+### CLI-only first-month Staging checkout, Listener Premium
 
-This creates only a **Staging** plan at 399 cents (existing prices are never overwritten), a test customer, a pending subscription, first billing cycle and checkout via Nexi Greece Sandbox HPP. The request includes recurrence CONTRACT_CREATION, MIT_SCHEDULED, a unique contractId, contractFrequency 28, and IMPLICIT capture. The 28 days are the declared minimum spacing in our requested MIT_SCHEDULED contract, not an implemented renewal scheduler. Use official Nexi test cards only. A repeated test reference is idempotent and does not create a second checkout. If the result is unknown, do not create another reference to retry the same purchase.
+The current iRadios plan is L-PREM at EUR 3.99 including VAT. To test the first month independently of the unimplemented iRadios backend, after deploying this change run:
 
-After completing the hosted test, reconcile its returned order_id using Payments::reconcile('staging', orderId). Only a confirmed full paid capture changes the local subscription to active and the first billing cycle to paid. The period ends one calendar month after confirmation. This does not enable automatic renewal.
+    /opt/alt/php84/usr/bin/php bin/manage.php sandbox-subscription staging listener-002
 
-Then verify the provider contract and view local status with:
+This registers the Staging plan only if missing, creates the local staging customer, subscription row and first-cycle invoice/payment, then launches an ordinary Nexi Sandbox HPP **without any recurrence fields or Nexi contract creation**. Only a fully confirmed captured payment marks the first-cycle ledger and local subscription mirror active. `auto_renew` remains 0 and no future charges are scheduled. Reusing the same test reference always returns the existing result and cannot generate another order.
 
-    /opt/alt/php84/usr/bin/php bin/manage.php sandbox-subscription-status staging listener-001
+The previous `listener-001` Staging intent returned HTTP 400 during the provider-side contract creation experiment, followed by a read-only GET order 404. It remains an unknown historical local intent and **must not be retried or rewritten with a new order**. The new test reference represents a **separate** first-month checkout after the provider request shape was changed. This test proves only the first month, not automatic MIT renewal.
 
-This performs the Nexi read-only GET /contracts/customers/{customerId}, checks the exact expected contract, and marks it locally verified only after a confirmed paid initial cycle. If the provider does not expose the contract, the pilot cannot certify recurrence.
+After payment, reconcile its actual `order_id` using read-only Nexi GET /orders and the Gateway's `Payments::reconcile('staging',orderId)`. Then check the local mirror:
 
-Admin STAGING > Subscriptions displays the test subscription with Auto Renewal = No, deliberately. Subsequent MIT charges, consent UI/storage, cancellation, expiry enforcement, entitlement propagation to iRadios, and production rollout are NOT implemented. The currently unimplemented iRadios webhook receiver may return 401 and is independent from this pilot.
+    /opt/alt/php84/usr/bin/php bin/manage.php sandbox-subscription-status staging listener-002
 
-## Provider-rejected sandbox subscription (HTTP 400)
+It reads only the staging database, never calls Nexi again, and shows `payment_status`, `subscription_state`, `period_end_at`, and disabled `auto_renew`.
 
-The first CLI Staging pilot `listener-001` returned HTTP 400 on POST `/orders/hpp`. A subsequent **read-only** GET on its order ID returned 404. This is **not** a successful Nexi contract, and no payment was captured. The historical error body was not stored, so the precise rejection reason remains unproven. Do not retry the same intent with a changed order ID. The Nexi Greece docs specify an `errors` list containing structured validation codes and descriptions for 400 responses. `NexiClient` now preserves only a short redacted error summary and per-request Correlation-Id in the private PHP error log, without logging credentials, full body, or sensitive query strings. This change does not retroactively recover the first rejection. Confirm via a read-only `GET /contracts/customers/sandbox-sub-listener-001` whether any contract is present, before considering a separate controlled test intent. The public Nexi Greece sandbox keys may be feature-specific; contract-creation capability has not been verified. Neither a generic 400 nor order 404 establishes which specific field failed. Do not enable production, automated MIT, or recurring entitlements based on the pilot.
+Until the iRadios backend is implemented, the Gateway's outgoing `payment.paid` webhook can remain pending/401; do not enable customer benefits or presume that iRadios has received it. The Gateway mirror is not the iRadios source of truth. Do not enable live payments or claim automatic renewals pass.

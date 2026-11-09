@@ -88,9 +88,6 @@ check(str_contains($adminSource,'MFA required for export'),'CSV downloads requir
 check(str_contains($adminSource,'data-stepup='),'sensitive admin forms use action confirmation');
 $nexiSource=file_get_contents(dirname(__DIR__).'/src/NexiClient.php');
 check($nexiSource!==false && str_contains($nexiSource,"if(\$this->environment==='staging')\$session['captureType']='IMPLICIT';"),'Sandbox HPP explicitly requests implicit capture');
-$recurrence=\Iluma\Gateway\SubscriptionPilot::recurrence('ILC'.str_repeat('A',24));
-check($recurrence['action']==='CONTRACT_CREATION' && $recurrence['contractType']==='MIT_SCHEDULED' &&
- $recurrence['contractFrequency']==='28','Staging subscription pilot prepares Nexi contract');
 check(\Iluma\Gateway\SubscriptionPilot::reference('listener-001')==='listener-001','Staging subscription test reference');
 try{\Iluma\Gateway\SubscriptionPilot::reference('../bad');$bad=false;}catch(\InvalidArgumentException){$bad=true;}
 check($bad,'Staging subscription rejects unsafe reference');
@@ -99,8 +96,13 @@ check($pilotSource!==false && str_contains($pilotSource,"'renewal_enabled'=>fals
  str_contains($pilotSource,"Db::get('staging')"),'Subscription pilot is staging-only with renewals off');
 check(str_contains($pilotSource,"'sandbox-subscription-'.\$ref") &&
  str_contains($pilotSource,'FOR UPDATE'),'Staging subscription uses stable idempotency key');
-check(str_contains($pilotSource,'contractsForCustomer'),'Nexi contract provider lookup implemented');
-check(str_contains($nexiSource,"'/api/v1/contracts/customers/'"),'Nexi contract lookup route');
+check(str_contains($pilotSource,"'payment_mode'=>'one_time_hosted_checkout'") &&
+ !str_contains($pilotSource,'CONTRACT_CREATION') &&
+ !str_contains($pilotSource,'MIT_SCHEDULED'),'Staging plan pilot does not require Nexi recurring contract');
+check(str_contains($pilotSource,'$orderId,self::CENTS,$external') &&
+ !str_contains($pilotSource,'self::recurrence('),'First month is standard HPP checkout');
+check(str_contains($pilotSource,'JOIN customers c ON c.id=s.customer_id') &&
+ !str_contains($pilotSource,'JOIN nexi_contracts nc'),'Subscription status belongs to Gateway ledger and needs no Nexi contract');
 $paymentSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
 check(str_contains($paymentSource,"period_end_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 1 MONTH)") &&
  str_contains($paymentSource,"auto_renew=0"),'Subscription pilot activates after paid without renewal');

@@ -162,3 +162,22 @@ local payment rows directly to 'paid'. Read the provider order again after
 a successful capture. Do not create duplicate checkouts to resolve an
 existing intent. For a separate new sandbox test, use a new purchase intent
 and an unused idempotency key.
+
+## Observed implicit-capture response: AUTHORIZATION / EXECUTED
+
+The XPay Greece Sandbox has returned the following on a completed implicit
+checkout (example test order): `authorizedAmount=100`, `capturedAmount=100`,
+`lastOperationType=AUTHORIZATION`, operation `AUTHORIZATION / EXECUTED`.
+An older PaymentState implementation required an additional CAPTURE operation
+and incorrectly returned `unknown`. The updated classifier recognizes this
+**specific provider-confirmed case** as paid only when the GET /orders response
+matches the expected order ID, exact order amount/currency, exact captured
+amount and successful operation amount/currency. An AUTHORIZED-only operation
+or `capturedAmount=0` remains unknown. Refund, cancel and void must not be
+reclassified as newly paid.
+
+After deploying this fix, rerun the read-only provider reconciliation for the
+existing observed order; it will update the Staging database and queue an
+iRadios event only if the provider still confirms a captured payment. The
+iRadios event delivery worker must be configured and verified separately.
+Never manually update the payment status in the database.

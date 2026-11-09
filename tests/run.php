@@ -15,6 +15,35 @@ check(PaymentState::fromNexi($valid,499,'DIFFERENT')===['unknown',null],'mismatc
 $valid['orderStatus']['capturedAmount']='0';check(PaymentState::fromNexi($valid,499,'ILABC')===['unknown',null],'no capture means no paid');
 $valid['operations']=[['operationResult'=>'DECLINED','operationType'=>'AUTHORIZATION','operationCurrency'=>'EUR']];check(PaymentState::fromNexi($valid,499,'ILABC')===['failed',null],'decline');
 $valid['operations']=[['operationResult'=>'PENDING','operationType'=>'AUTHORIZATION','operationCurrency'=>'EUR']];check(PaymentState::fromNexi($valid,499,'ILABC')===['unknown',null],'pending never assumes success');
+// Regression: actual implicit capture response from XPay Greece Sandbox.
+$implicit=[
+ 'orderStatus'=>[
+  'order'=>['orderId'=>'ILIMPLICIT100','amount'=>'100','currency'=>'EUR'],
+  'authorizedAmount'=>'100','capturedAmount'=>'100','lastOperationType'=>'AUTHORIZATION'
+ ],
+ 'operations'=>[[
+  'orderId'=>'ILIMPLICIT100','operationId'=>'OP-AUTH-EXEC-1',
+  'operationType'=>'AUTHORIZATION','operationResult'=>'EXECUTED',
+  'operationAmount'=>'100','operationCurrency'=>'EUR'
+ ]]
+];
+check(PaymentState::fromNexi($implicit,100,'ILIMPLICIT100')===['paid','OP-AUTH-EXEC-1'],'implicit Nexi captured amount and EXECUTED authorization means paid');
+$noCapture=$implicit;$noCapture['orderStatus']['capturedAmount']='0';
+check(PaymentState::fromNexi($noCapture,100,'ILIMPLICIT100')===['unknown',null],'authorization without captured amount is never paid');
+$onlyAuthorized=$implicit;$onlyAuthorized['operations'][0]['operationResult']='AUTHORIZED';
+check(PaymentState::fromNexi($onlyAuthorized,100,'ILIMPLICIT100')===['unknown',null],'AUTHORIZED without EXECUTED cannot claim implicit payment');
+$wrongAmount=$implicit;$wrongAmount['operations'][0]['operationAmount']='99';
+check(PaymentState::fromNexi($wrongAmount,100,'ILIMPLICIT100')===['unknown',null],'implicit capture operation amount must match');
+$wrongCurrency=$implicit;$wrongCurrency['operations'][0]['operationCurrency']='USD';
+check(PaymentState::fromNexi($wrongCurrency,100,'ILIMPLICIT100')===['unknown',null],'implicit capture currency mismatch rejected');
+$wrongOrder=$implicit;$wrongOrder['operations'][0]['orderId']='ILOTHER';
+check(PaymentState::fromNexi($wrongOrder,100,'ILIMPLICIT100')===['unknown',null],'implicit capture operation order mismatch rejected');
+$overcaptured=$implicit;$overcaptured['orderStatus']['capturedAmount']='101';
+check(PaymentState::fromNexi($overcaptured,100,'ILIMPLICIT100')===['unknown',null],'implicit capture mismatch is not paid');
+$malformedCapture=$implicit;$malformedCapture['orderStatus']['capturedAmount']='100wat';
+check(PaymentState::fromNexi($malformedCapture,100,'ILIMPLICIT100')===['unknown',null],'malformed captured amount rejected');
+$refunded=$implicit;$refunded['orderStatus']['lastOperationType']='REFUND';
+check(PaymentState::fromNexi($refunded,100,'ILIMPLICIT100')===['unknown',null],'refunded last operation is not newly paid');
 putenv('NEXI_STAGING_BASE=https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp');putenv('NEXI_PRODUCTION_BASE=https://xpay.nexigroup.com/api/phoenix-0.0/psp');
 check(str_contains(Config::base('staging'),'xpaysandbox'),'staging endpoint pinned');
 putenv('NEXI_STAGING_BASE=https://xpay.nexigroup.com/api/phoenix-0.0/psp');

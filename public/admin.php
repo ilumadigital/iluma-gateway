@@ -14,7 +14,7 @@ function audit(string $action,string $target):void {Db::exec(Db::get('registry')
 function html(string $v):string{return Security::h($v);}
 function euro(int $v):string{return number_format($v/100,2,',','.').' €';}
 function localDate(?string $utc):string { if(!$utc)return '—';return (new DateTimeImmutable($utc,new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('Europe/Athens'))->format('d/m/Y H:i'); }
-function credentialEnv():string {return in_array($_SESSION['view_env']??'staging',['staging','production'],true)?$_SESSION['view_env']:'staging';}
+function credentialEnv():string {return \Iluma\Gateway\AdminContext::environment((array)($_SESSION??[]));}
 function page(string $title,string $body,string $error='',string $notice=''):never {
  $user=isset($_SESSION['admin_id']);$nav='';$environment=credentialEnv();$csrf=Security::csrf();
  if($user){foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','export'=>'Εξαγωγή CSV','settings'=>'Ρυθμίσεις'] as $slug=>$label)$nav.='<a href="/ilm-admin/?p='.$slug.'">'.html($label).'</a>';

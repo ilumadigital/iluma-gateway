@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
-use Iluma\Gateway\{Security,PaymentState,Config,NexiClient,EnvLoader};
+use Iluma\Gateway\{Security,PaymentState,Config,NexiClient,EnvLoader,AdminContext};
 putenv('MASTER_KEY_B64='.base64_encode(str_repeat('K',32)));
 $tests=0;
 function check(bool $ok,string $name):void {global $tests;$tests++;if(!$ok){fwrite(STDERR,"FAIL $name\n");exit(1);}echo "PASS $name\n";}
@@ -42,4 +42,8 @@ check($adminSource!==false && str_contains($adminSource,'/ilm-admin/?p='),'admin
 check(str_contains($adminSource,'/ilm-admin/admin.css'),'admin stylesheet uses new path');
 check(!str_contains($adminSource,"Config::get('ADMIN_HOST')"),'admin uses gateway host');
 check(!str_contains($adminSource,"header('Location: /')"),'admin redirects stay in protected path');
+check(AdminContext::environment([])==='staging','admin login page uses staging without a session environment');
+check(AdminContext::environment(['view_env'=>'staging'])==='staging','admin staging selection');
+check(AdminContext::environment(['view_env'=>'production'])==='production','admin production selection');
+check(AdminContext::environment(['view_env'=>'unexpected'])==='staging','unknown admin display environment falls back to staging');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

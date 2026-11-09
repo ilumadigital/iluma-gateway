@@ -1,5 +1,5 @@
 # Hostinger Apache/LiteSpeed: only explicitly allowed routes reach public/.
-# /ilm-admin is protected by an external Zero Trust/VPN gate plus app MFA.
+# /ilm-admin requires password + TOTP; optional Zero Trust/VPN gate recommended.
 Options -Indexes
 RewriteEngine On
 RewriteCond %{HTTP_HOST} !^gateway\.iluma\.gr$ [NC]

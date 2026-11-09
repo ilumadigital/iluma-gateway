@@ -3,13 +3,13 @@ declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Config,Db,Security,NexiClient,PaymentState,Payments,HttpError};
 $host=strtolower(explode(':',$_SERVER['HTTP_HOST']??'')[0]);
-if($host!==Config::get('GATEWAY_HOST')||!in_array(parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH),['/ilm-admin','/ilm-admin/'],true)||Config::get('ADMIN_ACCESS_VERIFIED')!=='1'){http_response_code(404);exit('Not found');}
+if($host!==Config::get('GATEWAY_HOST')||!in_array(parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH),['/ilm-admin','/ilm-admin/'],true)){http_response_code(404);exit('Not found');}
 header('X-Content-Type-Options: nosniff');header('Referrer-Policy: no-referrer');header('X-Frame-Options: DENY');
 header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
 header("Content-Security-Policy: default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
 ini_set('session.use_strict_mode','1');ini_set('session.cookie_httponly','1');ini_set('session.cookie_secure','1');ini_set('session.cookie_samesite','Strict');
 ini_set('session.gc_maxlifetime','1800');session_name('__Host-ilumaAdmin');session_set_cookie_params(['lifetime'=>0,'path'=>'/','secure'=>true,'httponly'=>true,'samesite'=>'Strict']);session_start();
-$reg=Db::get('registry');$error='';$notice='';$reveal='';
+$reg=null;$error='';$notice='';$reveal='';
 function audit(string $action,string $target):void {Db::exec(Db::get('registry'),'INSERT INTO audit_logs(admin_id,action,target,ip) VALUES(?,?,?,?)',[$_SESSION['admin_id']??null,$action,$target,$_SERVER['REMOTE_ADDR']??null]);}
 function html(string $v):string{return Security::h($v);}
 function euro(int $v):string{return number_format($v/100,2,',','.').' €';}
@@ -25,13 +25,21 @@ function page(string $title,string $body,string $error='',string $notice=''):nev
 }
 try {
  if($_SERVER['REQUEST_METHOD']==='POST') {
+  // DB errors are now caught and logged without exposing credentials.
+  $reg=Db::get('registry');
   Security::verifyCsrf();$action=$_POST['action']??'';
   if($action==='login'){
+   $ip=(string)($_SERVER['REMOTE_ADDR']??'');
+   $recent=Db::one($reg,"SELECT COUNT(*) AS total FROM audit_logs WHERE action='admin_login_failed' AND ip=? AND created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 15 MINUTE)",[$ip]);
+   if((int)($recent['total']??0)>=15){
+    http_response_code(429);
+    page('Πολλές απόπειρες σύνδεσης','<p>Προσπαθήστε ξανά αργότερα.</p>');
+   }
    $email=(string)($_POST['email']??'');$pw=(string)($_POST['password']??'');$otp=(string)($_POST['otp']??'');
    $u=Db::one($reg,'SELECT * FROM admin_users WHERE email=? AND enabled=1',[$email]);
    $allowed=$u && (!$u['locked_until']||strtotime($u['locked_until'].' UTC')<time());
    $success=$allowed && password_verify($pw,$u['passhash']) && Security::otpVerify(Security::decrypt($u['totp_secret_box']),$otp);
-   if(!$success){if($u){Db::exec($reg,'UPDATE admin_users SET failed_attempts=failed_attempts+1,locked_until=IF(failed_attempts>=4,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 15 MINUTE),locked_until) WHERE id=?',[$u['id']]);}$error='Αποτυχία σύνδεσης.';}
+   if(!$success){if($u){Db::exec($reg,'UPDATE admin_users SET failed_attempts=failed_attempts+1,locked_until=IF(failed_attempts>=4,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 15 MINUTE),locked_until) WHERE id=?',[$u['id']]);}audit('admin_login_failed','backoffice');$error='Αποτυχία σύνδεσης.';}
    else{session_regenerate_id(true);$_SESSION['admin_id']=$u['id'];$_SESSION['since']=time();$_SESSION['last']=time();$_SESSION['view_env']='staging';Db::exec($reg,'UPDATE admin_users SET failed_attempts=0,locked_until=NULL,last_login_at=UTC_TIMESTAMP() WHERE id=?',[$u['id']]);audit('login','backoffice');header('Location: /ilm-admin/');exit;}
   } elseif($action==='logout'){if(!empty($_SESSION['admin_id']))audit('logout','backoffice');$_SESSION=[];session_destroy();header('Location: /ilm-admin/');exit;}
   elseif(empty($_SESSION['admin_id']))throw new HttpError(403,'Not authenticated');
@@ -63,6 +71,7 @@ try {
   $csrf=Security::csrf();$form='<form class="login" method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="login"><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Κωδικός<input name="password" type="password" required autocomplete="current-password"></label><label>Κωδικός MFA (6 ψηφία)<input name="otp" inputmode="numeric" maxlength="6" required autocomplete="one-time-code"></label><button>Σύνδεση</button></form>';
   page('Σύνδεση διαχειριστή',$form,$error);
  }
+ if($reg===null)$reg=Db::get('registry');
  if(time()-(int)($_SESSION['last']??0)>1800 || time()-(int)($_SESSION['since']??0)>28800){$_SESSION=[];session_destroy();header('Location: /ilm-admin/');exit;}
  $_SESSION['last']=time();$env=credentialEnv();$db=Db::get($env);$p=(string)($_GET['p']??'dashboard');$csrf=Security::csrf();$content=$reveal;
  if($p==='export'){

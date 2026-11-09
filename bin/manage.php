@@ -26,6 +26,16 @@ if ($command === 'doctor') {
   try {\Iluma\Gateway\Config::base($name);echo strtoupper($name).": NEXI ENDPOINT OK\n";}
   catch (\Throwable $e){$ready=false;echo strtoupper($name).": INVALID NEXI ENDPOINT\n";}
  }
+ try {
+  $admin=Db::one(Db::get('registry'),'SELECT totp_secret_box FROM admin_users WHERE enabled=1 ORDER BY id LIMIT 1');
+  if($admin===false){
+   $ready=false;echo "ADMIN MFA: NO ACTIVE ADMIN\n";
+  }else{
+   $seed=Security::decrypt($admin['totp_secret_box']);
+   if(base64_decode($seed,true)===false)throw new \RuntimeException('Bad MFA seed');
+   echo "ADMIN MFA: OK (secret decrypts)\n";
+  }
+ } catch(\Throwable $e){$ready=false;echo "ADMIN MFA: DECRYPTION FAILED\n";}
  echo 'LIVE PAYMENTS: '.(\Iluma\Gateway\Config::liveAllowed()?'ENABLED (REVIEW REQUIRED)':'LOCKED')."\n";
  exit($ready?0:1);
 }

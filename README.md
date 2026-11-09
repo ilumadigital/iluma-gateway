@@ -36,7 +36,7 @@ The repository tracks **source and safe examples only**. `.gitignore` excludes `
 - PHP 8.3+ CLI + FPM with `pdo_mysql`, `sodium`, `curl`, `json`, `openssl` extensions; MySQL 8 / compatible recent MariaDB with strict mode, Nginx, TLS.
 - Three **separate** databases and DB users. Grant each runtime only minimum permissions. Registry contains admin users and encrypted API credentials; tenant DB contains money records.
 - An independent secrets manager or protected process environment supplying all variables in `.env.example`. For Hostinger, the restricted loader in `src/EnvLoader.php` reads only a private file outside the webroot (see `docs/HOSTINGER.md`).
-- Dedicated `gateway.iluma.gr` with protected admin at `https://gateway.iluma.gr/ilm-admin`, enforced Zero Trust/VPN for `/ilm-admin*` and valid HTTPS certificates.
+- Dedicated `gateway.iluma.gr` with protected admin at `https://gateway.iluma.gr/ilm-admin`, optional additional Zero Trust/VPN gate for `/ilm-admin*` and valid HTTPS certificates.
 
 ## 2. Installation
 
@@ -87,4 +87,4 @@ The tracked root `.htaccess` restricts access when Git deploys the entire repo t
 
 ### Admin dashboard URL
 
-Admin is served at **https://gateway.iluma.gr/ilm-admin** (with or without trailing slash), not a second subdomain. It stays at HTTP 404 while `ADMIN_ACCESS_VERIFIED=0`. Configure an actual VPN/Zero Trust rule for `/ilm-admin*`, verify it, create the admin account via SSH with MFA, then set `ADMIN_ACCESS_VERIFIED=1` in the private environment file. The old `ADMIN_HOST` variable is ignored by the admin route.
+Admin is served at **https://gateway.iluma.gr/ilm-admin** (with or without trailing slash), not a second subdomain. The login form is accessible with email, password and Google Authenticator-compatible TOTP; unauthenticated visitors cannot view payment data. Failed-attempt lockout and per-IP throttling are enforced. Additional VPN/Zero Trust protection for `/ilm-admin*` is recommended. The old `ADMIN_HOST` and `ADMIN_ACCESS_VERIFIED` variables are no longer enforced by the admin route.

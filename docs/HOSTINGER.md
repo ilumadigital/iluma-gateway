@@ -22,8 +22,8 @@ access to this private path, request an approved hosting configuration
 or use a VPS; never move the secrets into public_html to bypass it.
 
 Copy variables from .env.example and update all DB DSNs/users/passwords,
-MASTER_KEY_B64 and the fixed webhook URLs. Keep APP_ENV=development,
-PRODUCTION_ENABLED=0 and ADMIN_ACCESS_VERIFIED=0 until hardening is complete.
+MASTER_KEY_B64 and the fixed webhook URLs. Keep APP_ENV=development
+and PRODUCTION_ENABLED=0; public admin login requires password plus TOTP.
 
 IMPORTANT: Do not append /api/v1 to NEXI_STAGING_BASE or
 NEXI_PRODUCTION_BASE. The API client already appends /api/v1.
@@ -60,15 +60,16 @@ tables, the master key format, pinned Nexi endpoints and the production
 lock. It does not reveal secrets or call Nexi.
 
 The admin uses https://gateway.iluma.gr/ilm-admin (also /ilm-admin/) on the
-same Git deployment. Do not create a second hostname. Add an actual external
-VPN or Zero Trust policy for the URL path /ilm-admin* (including the CSS
-request /ilm-admin/admin.css). Admin HTML is intentionally unavailable
-until ADMIN_ACCESS_VERIFIED=1 in the private environment file. Changing
-that setting confirms an independently verified edge policy; it does NOT
-implement edge protection. The existing ADMIN_HOST variable is no longer
-used and may be removed from the private file.
+same Git deployment. Do not create a second hostname. The login is secured
+by an administrator password (Argon2id), Google Authenticator-compatible
+TOTP MFA, a session, CSRF protection, failed-account lockout and an
+IP-based login throttle recorded in the registry audit log. Optional
+VPN/Zero Trust access to /ilm-admin* is defense in depth and strongly
+recommended for a payment administration panel, but the login page no
+longer depends on ADMIN_ACCESS_VERIFIED. The old ADMIN_HOST and
+ADMIN_ACCESS_VERIFIED variables are ignored by the admin route.
 
-After verifying the external gate, create the first administrator via
+Create the first administrator via
 the SSH terminal (replace the email address):
     read -rsp 'Admin password (at least 16 chars): ' ADMIN_INITIAL_PASSWORD; echo
     export ADMIN_INITIAL_PASSWORD
@@ -76,8 +77,8 @@ the SSH terminal (replace the email address):
     unset ADMIN_INITIAL_PASSWORD
 
 The CLI prints a one-time Base32 TOTP secret. Enter it manually into
-your authenticator and never copy it to public logs or Git. Log in only
-at https://gateway.iluma.gr/ilm-admin with password and the MFA code.
+your authenticator and never copy it to public logs or Git. Log in at https://gateway.iluma.gr/ilm-admin with password and the MFA code.
+Do not disable the login rate limit, account lockout or TOTP verification.
 
 ## Sandbox onboarding
 
@@ -94,9 +95,9 @@ a PCI scope assessment remain prerequisites.
 
 ## Admin path checks
 
-- Visit https://gateway.iluma.gr/ilm-admin before edge authentication: the access provider must block it.
-- Confirm that https://gateway.iluma.gr/ilm-admin/admin.css is covered by the same access policy.
-- Once the external gate is verified, set ADMIN_ACCESS_VERIFIED=1 in the private file and use the documented SSH admin initialization (password + TOTP).
+- Visit https://gateway.iluma.gr/ilm-admin and verify the Email / Password / MFA login form loads.
+- The admin requires all three valid factors for a successful login.
+- Set an optional VPN or Zero Trust gate around /ilm-admin* if available for extra protection.
 - The root path / and direct /public/admin.php must stay 404. No new DNS subdomain is required.
 
 ## When CLI doctor prints nothing or admin returns 500
@@ -116,3 +117,17 @@ If it reports permissions, ensure the private env file is chmod 600.
 Do not enable display_errors on the public website, show secrets, or move
 private env files into public_html. For web HTTP 500, inspect Hostinger
 PHP error logs; .htaccess server failures may not reach PHP.
+
+## Troubleshooting web 500 even when CLI doctor is OK
+
+The admin login page no longer connects to MySQL until login is submitted.
+If it still says Internal server error, consult the domain PHP error log.
+If login appears but POST fails, confirm that web PHP also has pdo_mysql,
+sodium, mbstring and a readable private env. CLI PHP 8.4 working does not
+prove PHP-FPM configuration. Run (never paste any passwords):
+
+    /opt/alt/php84/usr/bin/php bin/manage.php doctor
+
+The doctor now checks that the first enabled administrator's stored MFA secret
+can be decrypted with the current MASTER_KEY_B64. If this fails, do not
+regenerate the master key randomly; investigate the historical key securely.

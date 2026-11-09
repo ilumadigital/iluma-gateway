@@ -18,7 +18,7 @@
 ## Before any internet-facing deployment
 
 1. Run as isolated unprivileged FPM users; deploy source outside webroot; no public database ports. Enforce TLS 1.2+, HSTS and secure ciphers.
-2. Put `admin.gateway.iluma.gr` behind a **real VPN or Zero Trust policy**. Set `ADMIN_ACCESS_VERIFIED=1` only after independently verifying it cannot be reached publicly. Nginx example is NOT a turnkey Zero Trust installation.
+2. Admin now uses `https://gateway.iluma.gr/ilm-admin` with password + TOTP, account lockout and rate limiting. Restrict it behind an additional **VPN or Zero Trust policy** for production, especially for payment administration. The optional edge policy is not provided by this code.
 3. Add rate-limit zones in Nginx/edge and intrusion detection for API, webhook, and admin login; restrict provider notification origin where supported, but do not depend on source IP alone.
 4. Put secrets in KMS/secrets manager or host process environment, not in Git or public disk. Restrict CLI printing and logs. Establish master-key and credential rotation/recovery procedures.
 5. Implement admin role separation, two-person approval for refunds, contract deactivation, production credential changes and production API-key disable; current minimal admin supports only one administrator role.

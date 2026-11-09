@@ -1,30 +1,31 @@
 # Hostinger Apache/LiteSpeed: only explicitly allowed routes reach public/.
+# /ilm-admin is protected by an external Zero Trust/VPN gate plus app MFA.
 Options -Indexes
 RewriteEngine On
 RewriteCond %{HTTP_HOST} !^gateway\.iluma\.gr$ [NC]
-RewriteCond %{HTTP_HOST} !^admin\.gateway\.iluma\.gr$ [NC]
 RewriteRule ^ - [R=404,L]
 
 RewriteCond %{HTTPS} !=on
 RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L,NE]
 
-# THE_REQUEST sees the original browser path, not internal rewrites.
+# Reject direct browser requests to the internal public/ front controllers.
 RewriteCond %{THE_REQUEST} \s/+public(?:/|\?|\s) [NC]
 RewriteRule ^ - [R=404,L]
 
-# These targets are internal; a browser cannot request /public/ directly.
+# Internal rewrite targets only; direct /public/* requests are denied above.
 RewriteRule ^public/(?:index\.php|admin\.php|admin\.css)$ - [L]
 
+# Never allow the web to fetch application sources, dotenv, archives or config.
 RewriteRule ^(?:src|bin|database|deploy|docs|tests|vendor|private|storage|runtime|logs|backups)(?:/|$) - [R=404,L,NC]
 RewriteRule (^|/)\. - [R=404,L]
 RewriteRule \.(?:php|phtml|phar|sql|sqlite|json|md|lock|ini|env|log|bak|zip|tar|gz|key|pem|yml|yaml|xml|sh)$ - [R=404,L,NC]
 
-RewriteCond %{HTTP_HOST} ^gateway\.iluma\.gr$ [NC]
+# Protected admin: both /ilm-admin and /ilm-admin/ work.
+RewriteRule ^ilm-admin/?$ public/admin.php [L,QSA]
+RewriteRule ^ilm-admin/admin\.css$ public/admin.css [L]
+
+# Payments API and callbacks (unchanged).
 RewriteRule ^(?:api/v1/.+|nexi/(?:staging|production)/notification|checkout/(?:result|cancel))$ public/index.php [L,QSA]
 
-RewriteCond %{HTTP_HOST} ^admin\.gateway\.iluma\.gr$ [NC]
-RewriteRule ^admin\.css$ public/admin.css [L]
-RewriteCond %{HTTP_HOST} ^admin\.gateway\.iluma\.gr$ [NC]
-RewriteRule ^$ public/admin.php [L,QSA]
-
+# Neutral 404 for everything else.
 RewriteRule ^ - [R=404,L]

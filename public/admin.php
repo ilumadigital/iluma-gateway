@@ -3,7 +3,7 @@ declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Config,Db,Security,NexiClient,PaymentState,Payments,HttpError};
 $host=strtolower(explode(':',$_SERVER['HTTP_HOST']??'')[0]);
-if($host!==Config::get('ADMIN_HOST')||Config::get('ADMIN_ACCESS_VERIFIED')!=='1'){http_response_code(404);exit('Not found');}
+if($host!==Config::get('GATEWAY_HOST')||!in_array(parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH),['/ilm-admin','/ilm-admin/'],true)||Config::get('ADMIN_ACCESS_VERIFIED')!=='1'){http_response_code(404);exit('Not found');}
 header('X-Content-Type-Options: nosniff');header('Referrer-Policy: no-referrer');header('X-Frame-Options: DENY');
 header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
 header("Content-Security-Policy: default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
@@ -17,11 +17,11 @@ function localDate(?string $utc):string { if(!$utc)return '—';return (new Date
 function credentialEnv():string {return in_array($_SESSION['view_env']??'staging',['staging','production'],true)?$_SESSION['view_env']:'staging';}
 function page(string $title,string $body,string $error='',string $notice=''):never {
  $user=isset($_SESSION['admin_id']);$nav='';$environment=credentialEnv();$csrf=Security::csrf();
- if($user){foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','export'=>'Εξαγωγή CSV','settings'=>'Ρυθμίσεις'] as $slug=>$label)$nav.='<a href="/?p='.$slug.'">'.html($label).'</a>';
+ if($user){foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','export'=>'Εξαγωγή CSV','settings'=>'Ρυθμίσεις'] as $slug=>$label)$nav.='<a href="/ilm-admin/?p='.$slug.'">'.html($label).'</a>';
  $nav.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><button name="action" value="logout">Αποσύνδεση</button></form>';
  $nav.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="environment"><select name="environment"><option value="staging"'.($environment==='staging'?' selected':'').'>STAGING</option><option value="production"'.($environment==='production'?' selected':'').'>PRODUCTION</option></select><button>Επιλογή</button></form>';
  }
- echo '<!doctype html><html lang="el"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.html($title).' — ILUMA</title><link rel="stylesheet" href="/admin.css"></head><body><header><strong>ILUMA<span> / PAYMENT GATEWAY</span></strong><span>'.($user?html(strtoupper($environment)).' — '.($environment==='staging'?'TEST ENVIRONMENT':'LIVE DATA (CHARGES LOCKED BY DEFAULT)'):'Προστατευμένη πρόσβαση').'</span></header><div class="layout"><aside>'.$nav.'</aside><main><h1>'.html($title).'</h1>'.($error?'<p class="alert">'.html($error).'</p>':'').($notice?'<p class="notice">'.html($notice).'</p>':'').$body.'</main></div></body></html>';exit;
+ echo '<!doctype html><html lang="el"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.html($title).' — ILUMA</title><link rel="stylesheet" href="/ilm-admin/admin.css"></head><body><header><strong>ILUMA<span> / PAYMENT GATEWAY</span></strong><span>'.($user?html(strtoupper($environment)).' — '.($environment==='staging'?'TEST ENVIRONMENT':'LIVE DATA (CHARGES LOCKED BY DEFAULT)'):'Προστατευμένη πρόσβαση').'</span></header><div class="layout"><aside>'.$nav.'</aside><main><h1>'.html($title).'</h1>'.($error?'<p class="alert">'.html($error).'</p>':'').($notice?'<p class="notice">'.html($notice).'</p>':'').$body.'</main></div></body></html>';exit;
 }
 try {
  if($_SERVER['REQUEST_METHOD']==='POST') {
@@ -32,10 +32,10 @@ try {
    $allowed=$u && (!$u['locked_until']||strtotime($u['locked_until'].' UTC')<time());
    $success=$allowed && password_verify($pw,$u['passhash']) && Security::otpVerify(Security::decrypt($u['totp_secret_box']),$otp);
    if(!$success){if($u){Db::exec($reg,'UPDATE admin_users SET failed_attempts=failed_attempts+1,locked_until=IF(failed_attempts>=4,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 15 MINUTE),locked_until) WHERE id=?',[$u['id']]);}$error='Αποτυχία σύνδεσης.';}
-   else{session_regenerate_id(true);$_SESSION['admin_id']=$u['id'];$_SESSION['since']=time();$_SESSION['last']=time();$_SESSION['view_env']='staging';Db::exec($reg,'UPDATE admin_users SET failed_attempts=0,locked_until=NULL,last_login_at=UTC_TIMESTAMP() WHERE id=?',[$u['id']]);audit('login','backoffice');header('Location: /');exit;}
-  } elseif($action==='logout'){if(!empty($_SESSION['admin_id']))audit('logout','backoffice');$_SESSION=[];session_destroy();header('Location: /');exit;}
+   else{session_regenerate_id(true);$_SESSION['admin_id']=$u['id'];$_SESSION['since']=time();$_SESSION['last']=time();$_SESSION['view_env']='staging';Db::exec($reg,'UPDATE admin_users SET failed_attempts=0,locked_until=NULL,last_login_at=UTC_TIMESTAMP() WHERE id=?',[$u['id']]);audit('login','backoffice');header('Location: /ilm-admin/');exit;}
+  } elseif($action==='logout'){if(!empty($_SESSION['admin_id']))audit('logout','backoffice');$_SESSION=[];session_destroy();header('Location: /ilm-admin/');exit;}
   elseif(empty($_SESSION['admin_id']))throw new HttpError(403,'Not authenticated');
-  elseif($action==='environment'){if(!in_array($_POST['environment']??'', ['staging','production'],true))throw new HttpError(422,'Invalid environment');$_SESSION['view_env']=$_POST['environment'];header('Location: /');exit;}
+  elseif($action==='environment'){if(!in_array($_POST['environment']??'', ['staging','production'],true))throw new HttpError(422,'Invalid environment');$_SESSION['view_env']=$_POST['environment'];header('Location: /ilm-admin/');exit;}
   elseif($action==='nexi-save'){
    $env=credentialEnv();$value=(string)($_POST['secret']??'');$otp=(string)($_POST['otp']??'');
    $u=Db::one($reg,'SELECT totp_secret_box FROM admin_users WHERE id=?',[$_SESSION['admin_id']]);
@@ -63,7 +63,7 @@ try {
   $csrf=Security::csrf();$form='<form class="login" method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="login"><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Κωδικός<input name="password" type="password" required autocomplete="current-password"></label><label>Κωδικός MFA (6 ψηφία)<input name="otp" inputmode="numeric" maxlength="6" required autocomplete="one-time-code"></label><button>Σύνδεση</button></form>';
   page('Σύνδεση διαχειριστή',$form,$error);
  }
- if(time()-(int)($_SESSION['last']??0)>1800 || time()-(int)($_SESSION['since']??0)>28800){$_SESSION=[];session_destroy();header('Location: /');exit;}
+ if(time()-(int)($_SESSION['last']??0)>1800 || time()-(int)($_SESSION['since']??0)>28800){$_SESSION=[];session_destroy();header('Location: /ilm-admin/');exit;}
  $_SESSION['last']=time();$env=credentialEnv();$db=Db::get($env);$p=(string)($_GET['p']??'dashboard');$csrf=Security::csrf();$content=$reveal;
  if($p==='export'){
   audit('csv_export',$env);$rows=Db::all($db,'SELECT p.id,p.order_id,p.created_at,c.email,pr.title,p.amount_cents,p.currency,p.status FROM payments p JOIN customers c ON c.id=p.customer_id JOIN products pr ON pr.id=p.product_id ORDER BY p.created_at DESC LIMIT 10000');
@@ -100,7 +100,7 @@ try {
   $rows=Db::all($db,'SELECT p.id,p.order_id,p.created_at,p.status,p.amount_cents,c.email,pr.title FROM payments p JOIN customers c ON c.id=p.customer_id JOIN products pr ON pr.id=p.product_id'.$where.' ORDER BY p.created_at DESC LIMIT 100',$args);
   $content.='<form method="get"><input type="hidden" name="p" value="payments"><input name="q" placeholder="Payment ID / Nexi Order ID / email" value="'.html($query).'"><button>Αναζήτηση</button></form><table><tr><th>Ημερομηνία (Αθήνα)</th><th>Πελάτης</th><th>Υπηρεσία</th><th>Ποσό</th><th>Αποτέλεσμα</th></tr>';
   $statuses=['paid'=>'Πληρώθηκε','failed'=>'Απέτυχε','canceled'=>'Ακυρώθηκε','unknown'=>'Αναμονή επιβεβαίωσης','redirect'=>'Εκκρεμεί','pending'=>'Εκκρεμεί','refunded'=>'Επιστράφηκε'];
-  foreach($rows as $r)$content.='<tr><td><a href="/?p=payment&id='.html($r['id']).'">'.html(localDate($r['created_at'])).'</a></td><td>'.html($r['email']).'</td><td>'.html($r['title']).'</td><td>'.euro((int)$r['amount_cents']).'</td><td><span class="status '.html($r['status']).'">'.html($statuses[$r['status']]??$r['status']).'</span></td></tr>';
+  foreach($rows as $r)$content.='<tr><td><a href="/ilm-admin/?p=payment&id='.html($r['id']).'">'.html(localDate($r['created_at'])).'</a></td><td>'.html($r['email']).'</td><td>'.html($r['title']).'</td><td>'.euro((int)$r['amount_cents']).'</td><td><span class="status '.html($r['status']).'">'.html($statuses[$r['status']]??$r['status']).'</span></td></tr>';
   $content.='</table>';
  } elseif($p==='payment'){
   $id=(string)($_GET['id']??'');$row=Db::one($db,'SELECT p.*,c.email,pr.title FROM payments p JOIN customers c ON c.id=p.customer_id JOIN products pr ON pr.id=p.product_id WHERE p.id=?',[$id]);if(!$row)throw new HttpError(404,'Not found');

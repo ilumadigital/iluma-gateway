@@ -34,4 +34,12 @@ try{EnvLoader::load($project);$bad=false;}catch(\RuntimeException){$bad=true;}
 check($bad,'unsafe environment permissions rejected');
 unlink($file);rmdir($private);rmdir($project);rmdir(dirname($project));rmdir(dirname(dirname($project)));rmdir(dirname(dirname(dirname($project))));
 putenv('REGISTRY_USER');putenv('STAGING_PASSWORD');
+$routing=file_get_contents(dirname(__DIR__).'/.htaccess');
+$adminSource=file_get_contents(dirname(__DIR__).'/public/admin.php');
+check($routing!==false && str_contains($routing,'^ilm-admin/?$ public/admin.php'),'hostinger admin path rewrite');
+check(str_contains($routing,'^ilm-admin/admin\.css$ public/admin.css'),'hostinger admin stylesheet rewrite');
+check($adminSource!==false && str_contains($adminSource,'/ilm-admin/?p='),'admin navigation uses new path');
+check(str_contains($adminSource,'/ilm-admin/admin.css'),'admin stylesheet uses new path');
+check(!str_contains($adminSource,"Config::get('ADMIN_HOST')"),'admin uses gateway host');
+check(!str_contains($adminSource,"header('Location: /')"),'admin redirects stay in protected path');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

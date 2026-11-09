@@ -41,6 +41,7 @@ Check these URLs using curl, in a browser or via an external monitor:
     https://gateway.iluma.gr/database/registry.sql
     https://gateway.iluma.gr/public/admin.php
     https://gateway.iluma.gr/.env.example
+    https://gateway.iluma.gr/admin.php
 All must return 404, never source content. Check encoded paths,
 backup extensions, direct PHP files and alternate hosts too. If any
 file can be downloaded, disable public access and correct web routing.
@@ -57,11 +58,14 @@ The doctor checks 6 Registry tables, 15 Staging tables, 15 Production
 tables, the master key format, pinned Nexi endpoints and the production
 lock. It does not reveal secrets or call Nexi.
 
-The admin hostname admin.gateway.iluma.gr must map to the same protected
-document root and be behind an actual VPN or Zero Trust access policy.
-Changing ADMIN_ACCESS_VERIFIED=1 in the private file is only an
-acknowledgement that this external access control has been independently
-verified; it does not create access protection on its own.
+The admin uses https://gateway.iluma.gr/ilm-admin (also /ilm-admin/) on the
+same Git deployment. Do not create a second hostname. Add an actual external
+VPN or Zero Trust policy for the URL path /ilm-admin* (including the CSS
+request /ilm-admin/admin.css). Admin HTML is intentionally unavailable
+until ADMIN_ACCESS_VERIFIED=1 in the private environment file. Changing
+that setting confirms an independently verified edge policy; it does NOT
+implement edge protection. The existing ADMIN_HOST variable is no longer
+used and may be removed from the private file.
 
 After verifying the external gate, create the first administrator via
 the SSH terminal (replace the email address):
@@ -72,7 +76,7 @@ the SSH terminal (replace the email address):
 
 The CLI prints a one-time Base32 TOTP secret. Enter it manually into
 your authenticator and never copy it to public logs or Git. Log in only
-at the protected admin hostname with password and the MFA code.
+at https://gateway.iluma.gr/ilm-admin with password and the MFA code.
 
 ## Sandbox onboarding
 
@@ -86,3 +90,10 @@ This development foundation is NOT production ready. No live payments,
 recurring charges, refunds or real money operations are authorized.
 Real Nexi UAT, iRadios webhook integration, penetration testing and
 a PCI scope assessment remain prerequisites.
+
+## Admin path checks
+
+- Visit https://gateway.iluma.gr/ilm-admin before edge authentication: the access provider must block it.
+- Confirm that https://gateway.iluma.gr/ilm-admin/admin.css is covered by the same access policy.
+- Once the external gate is verified, set ADMIN_ACCESS_VERIFIED=1 in the private file and use the documented SSH admin initialization (password + TOTP).
+- The root path / and direct /public/admin.php must stay 404. No new DNS subdomain is required.

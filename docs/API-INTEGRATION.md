@@ -87,3 +87,24 @@ The iRadios backend must validate signed events, reject replayed nonces, dedupli
 ## Not yet enabled
 
 `POST /api/v1/subscriptions/renew`, `POST /api/v1/subscriptions/cancel`, `POST /api/v1/subscriptions/sync`, `POST /api/v1/payment-methods/replace` return HTTP 501 until additional provider-contract behavior and integration tests are verified. They are intentionally **fail-closed**, not mock success endpoints.
+
+
+## CLI-only Staging subscription pilot (L-PREM)
+
+Source: user-supplied iRadios price list. Listener Premium (L-PREM) is EUR 3.99 per calendar month including 24% VAT, intended for recurring renewal.
+
+On the Hostinger Gateway CLI, after Git deployment, use the PHP 8.4 binary:
+
+    /opt/alt/php84/usr/bin/php bin/manage.php sandbox-subscription staging listener-001
+
+This creates only a **Staging** plan at 399 cents (existing prices are never overwritten), a test customer, a pending subscription, first billing cycle and checkout via Nexi Greece Sandbox HPP. The request includes recurrence CONTRACT_CREATION, MIT_SCHEDULED, a unique contractId, contractFrequency 28, and IMPLICIT capture. The 28 days are the provider minimum spacing, not an implemented renewal scheduler. Use official Nexi test cards only. A repeated test reference is idempotent and does not create a second checkout. If the result is unknown, do not create another reference to retry the same purchase.
+
+After completing the hosted test, reconcile its returned order_id using Payments::reconcile('staging', orderId). Only a confirmed full paid capture changes the local subscription to active and the first billing cycle to paid. The period ends one calendar month after confirmation. This does not enable automatic renewal.
+
+Then verify the provider contract and view local status with:
+
+    /opt/alt/php84/usr/bin/php bin/manage.php sandbox-subscription-status staging listener-001
+
+This performs the Nexi read-only GET /contracts/customers/{customerId}, checks the exact expected contract, and marks it locally verified only after a confirmed paid initial cycle. If the provider does not expose the contract, the pilot cannot certify recurrence.
+
+Admin STAGING > Subscriptions displays the test subscription with Auto Renewal = No, deliberately. Subsequent MIT charges, consent UI/storage, cancellation, expiry enforcement, entitlement propagation to iRadios, and production rollout are NOT implemented. The currently unimplemented iRadios webhook receiver may return 401 and is independent from this pilot.

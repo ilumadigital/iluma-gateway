@@ -39,6 +39,18 @@ if ($command === 'doctor') {
  echo 'LIVE PAYMENTS: '.(\Iluma\Gateway\Config::liveAllowed()?'ENABLED (REVIEW REQUIRED)':'LOCKED')."\n";
  exit($ready?0:1);
 }
+// Staging-only CLI pilot; no public route and no production writes.
+if(in_array($command,['sandbox-subscription','sandbox-subscription-status'],true)){
+ if(($argv[2]??'')!=='staging')die("Usage: ".$command." staging <test-reference>\n");
+ try {
+  $ref=$argv[3]??'';
+  $data=$command==='sandbox-subscription'
+   ? \Iluma\Gateway\SubscriptionPilot::start($ref)
+   : \Iluma\Gateway\SubscriptionPilot::verifyProviderContract($ref);
+  echo Security::json($data),PHP_EOL;
+ }catch(\Throwable $e){fwrite(STDERR,'Sandbox subscription error: '.$e->getMessage().PHP_EOL);exit(1);}
+ exit;
+}
 $reg=Db::get('registry');
 if($command==='create-admin'){
  $email=$argv[2]??'';if(!filter_var($email,FILTER_VALIDATE_EMAIL))die("Usage: create-admin email\n");
@@ -65,4 +77,4 @@ if($command==='product'){
  Db::exec($db,'INSERT INTO products(application_id,sku,title,amount_cents) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title)',[$app['id'],$sku,$sku,$cents]);
  echo "Product registered. Existing prices NEVER auto-changed.\n";exit;
 }
-echo "Commands: doctor | create-admin email | create-key staging|production | product staging|production sku cents\n";
+echo "Commands: doctor | create-admin email | create-key staging|production | product staging|production sku cents | sandbox-subscription staging test-ref | sandbox-subscription-status staging test-ref\n";

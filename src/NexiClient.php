@@ -39,6 +39,10 @@ final class NexiClient {
   if($recurrence!==null) $session['recurrence']=$recurrence;
   return $this->request('POST','/api/v1/orders/hpp',['order'=>['orderId'=>$orderId,'amount'=>(string)$amount,'currency'=>'EUR','customerId'=>$customerRef],'paymentSession'=>$session]);
  }
+ public function contractsForCustomer(string $customerId):array {
+  if(!preg_match('/^[A-Za-z0-9._-]{1,190}$/D',$customerId))throw new \InvalidArgumentException('Invalid customer id');
+  return $this->request('GET','/api/v1/contracts/customers/'.$customerId);
+ }
  public function order(string $orderId): array {if(!preg_match('/^[A-Za-z0-9_-]{1,27}$/D',$orderId)) throw new \InvalidArgumentException('Order id');return $this->request('GET','/api/v1/orders/'.$orderId);}
  public function testConnection(): bool { $this->request('GET','/api/v1/payment_methods');return true; }
 }

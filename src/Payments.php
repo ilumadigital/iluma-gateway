@@ -67,6 +67,19 @@ final class Payments {
    if($locked['status']==='paid' || $locked['status']===$status) { $db->commit();return $locked['status']; }
    if($status==='paid' || !in_array($locked['status'],['paid','refunded'],true)) {
     Db::exec($db,'UPDATE payments SET status=?,operation_id=?,confirmed_at=UTC_TIMESTAMP() WHERE id=?',[$status,$operation,$p['id']]);
+    // The pilot first cycle activates only after Nexi confirms exact capture.
+    // Renewal remains disabled; no MIT calls are made.
+    if($env==='staging' && $locked['subscription_id']!==null && $locked['billing_cycle_id']!==null){
+     if($status==='paid'){
+      Db::exec($db,"UPDATE subscriptions SET state='active',
+       period_end_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 1 MONTH),next_billing_at=NULL
+       WHERE id=? AND state='pending' AND auto_renew=0",[$locked['subscription_id']]);
+      Db::exec($db,"UPDATE billing_cycles SET state='paid' WHERE id=? AND state='pending'",[$locked['billing_cycle_id']]);
+     }elseif(in_array($status,['failed','canceled'],true)){
+      Db::exec($db,"UPDATE subscriptions SET state=? WHERE id=? AND state='pending'",[$status,$locked['subscription_id']]);
+      Db::exec($db,"UPDATE billing_cycles SET state=? WHERE id=? AND state='pending'",[$status,$locked['billing_cycle_id']]);
+     }
+    }
     self::log($db,$p['id'],$status,$status==='paid'?'Η Nexi επιβεβαίωσε επιτυχημένη πληρωμή.':($status==='failed'?'Η Nexi απέρριψε την πληρωμή.':'Η συναλλαγή ακυρώθηκε.'));
     Db::exec($db,'INSERT INTO payment_attempts(payment_id,provider_status,operation_id) VALUES(?,?,?)',[$p['id'],$status,$operation]);
     $eventId=Security::id();$body=['event_id'=>$eventId,'event_type'=>'payment.'.$status,'payment_id'=>$p['id'],'order_id'=>$order,'customer_id'=>$p['customer_id'],'amount_cents'=>(int)$p['amount_cents'],'currency'=>'EUR','environment'=>$env,'occurred_at'=>gmdate('c')];

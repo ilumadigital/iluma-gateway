@@ -1,0 +1,30 @@
+# Hostinger Apache/LiteSpeed: only explicitly allowed routes reach public/.
+Options -Indexes
+RewriteEngine On
+RewriteCond %{HTTP_HOST} !^gateway\.iluma\.gr$ [NC]
+RewriteCond %{HTTP_HOST} !^admin\.gateway\.iluma\.gr$ [NC]
+RewriteRule ^ - [R=404,L]
+
+RewriteCond %{HTTPS} !=on
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L,NE]
+
+# THE_REQUEST sees the original browser path, not internal rewrites.
+RewriteCond %{THE_REQUEST} \s/+public(?:/|\?|\s) [NC]
+RewriteRule ^ - [R=404,L]
+
+# These targets are internal; a browser cannot request /public/ directly.
+RewriteRule ^public/(?:index\.php|admin\.php|admin\.css)$ - [L]
+
+RewriteRule ^(?:src|bin|database|deploy|docs|tests|vendor|private|storage|runtime|logs|backups)(?:/|$) - [R=404,L,NC]
+RewriteRule (^|/)\. - [R=404,L]
+RewriteRule \.(?:php|phtml|phar|sql|sqlite|json|md|lock|ini|env|log|bak|zip|tar|gz|key|pem|yml|yaml|xml|sh)$ - [R=404,L,NC]
+
+RewriteCond %{HTTP_HOST} ^gateway\.iluma\.gr$ [NC]
+RewriteRule ^(?:api/v1/.+|nexi/(?:staging|production)/notification|checkout/(?:result|cancel))$ public/index.php [L,QSA]
+
+RewriteCond %{HTTP_HOST} ^admin\.gateway\.iluma\.gr$ [NC]
+RewriteRule ^admin\.css$ public/admin.css [L]
+RewriteCond %{HTTP_HOST} ^admin\.gateway\.iluma\.gr$ [NC]
+RewriteRule ^$ public/admin.php [L,QSA]
+
+RewriteRule ^ - [R=404,L]

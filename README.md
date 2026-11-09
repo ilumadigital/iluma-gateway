@@ -35,7 +35,7 @@ The repository tracks **source and safe examples only**. `.gitignore` excludes `
 
 - PHP 8.3+ CLI + FPM with `pdo_mysql`, `sodium`, `curl`, `json`, `openssl` extensions; MySQL 8 / compatible recent MariaDB with strict mode, Nginx, TLS.
 - Three **separate** databases and DB users. Grant each runtime only minimum permissions. Registry contains admin users and encrypted API credentials; tenant DB contains money records.
-- An independent secrets manager or protected process environment supplying all variables in `.env.example`. There is no env-file autoloader on purpose.
+- An independent secrets manager or protected process environment supplying all variables in `.env.example`. For Hostinger, the restricted loader in `src/EnvLoader.php` reads only a private file outside the webroot (see `docs/HOSTINGER.md`).
 - Dedicated `gateway.iluma.gr` and protected `admin.gateway.iluma.gr` with valid HTTPS certificates and enforced Zero Trust/VPN.
 
 ## 2. Installation
@@ -80,3 +80,7 @@ The admin environment switch changes only which DB is viewed; it never switches 
 - Tokenized/recurring: https://developer.nexigroup.com/xpaygreece/en-EU/docs/tokenization-payments/
 
 The official API reference states sandbox base `https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp`, production base `https://xpay.nexigroup.com/api/phoenix-0.0/psp`, HPP `POST /api/v1/orders/hpp` and status `GET /api/v1/orders/{orderId}`. Merchant-specific eligibility and capture semantics must be verified before enabling live charges.
+
+## Hostinger Git auto-deployment
+
+The tracked root `.htaccess` restricts access when Git deploys the entire repo to Hostinger `public_html`. See [Hostinger deployment guide](docs/HOSTINGER.md) to set the private ENV path, verify inaccessible source files, check database connectivity with `php bin/manage.php doctor`, and create the first MFA administrator. The public document root remains a security limitation: validate edge routing before storing credentials or opening admin access. Production charges remain disabled.

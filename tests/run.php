@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
-use Iluma\Gateway\{Security,PaymentState,Config,NexiClient};
+use Iluma\Gateway\{Security,PaymentState,Config,NexiClient,EnvLoader};
 putenv('MASTER_KEY_B64='.base64_encode(str_repeat('K',32)));
 $tests=0;
 function check(bool $ok,string $name):void {global $tests;$tests++;if(!$ok){fwrite(STDERR,"FAIL $name\n");exit(1);}echo "PASS $name\n";}
@@ -19,4 +19,19 @@ putenv('NEXI_STAGING_BASE=https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp'
 check(str_contains(Config::base('staging'),'xpaysandbox'),'staging endpoint pinned');
 putenv('NEXI_STAGING_BASE=https://xpay.nexigroup.com/api/phoenix-0.0/psp');
 try{Config::base('staging');$bad=false;}catch(\RuntimeException){$bad=true;}check($bad,'no staging to live fallback');
+$base=sys_get_temp_dir().'/iluma-env-test-'.bin2hex(random_bytes(6));
+$project=$base.'/domains/example.test/public_html/site';
+$private=$base.'/domains/example.test/private';
+mkdir($project,0700,true);mkdir($private,0700,true);
+$file=$private.'/iluma-gateway.env';
+file_put_contents($file,"REGISTRY_USER=test_user\nSTAGING_PASSWORD='a=b#c'\n");chmod($file,0600);
+putenv('REGISTRY_USER');putenv('STAGING_PASSWORD');
+check(EnvLoader::privateFilePath($project)===$file,'Hostinger env path outside public_html');
+check(EnvLoader::load($project),'Hostinger private env loaded');
+check(getenv('STAGING_PASSWORD')==='a=b#c','private password special characters');
+chmod($file,0644);
+try{EnvLoader::load($project);$bad=false;}catch(\RuntimeException){$bad=true;}
+check($bad,'unsafe environment permissions rejected');
+unlink($file);rmdir($private);rmdir($project);rmdir(dirname($project));rmdir(dirname(dirname($project)));rmdir(dirname(dirname(dirname($project))));
+putenv('REGISTRY_USER');putenv('STAGING_PASSWORD');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

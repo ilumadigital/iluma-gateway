@@ -88,3 +88,13 @@ The tracked root `.htaccess` restricts access when Git deploys the entire repo t
 ### Admin dashboard URL
 
 Admin is served at **https://gateway.iluma.gr/ilm-admin** (with or without trailing slash), not a second subdomain. The login form is accessible with email, password and Google Authenticator-compatible TOTP; unauthenticated visitors cannot view payment data. Failed-attempt lockout and per-IP throttling are enforced. Additional VPN/Zero Trust protection for `/ilm-admin*` is recommended. The old `ADMIN_HOST` and `ADMIN_ACCESS_VERIFIED` variables are no longer enforced by the admin route.
+
+## Admin visual refresh and MFA confirmation
+
+The admin at **https://gateway.iluma.gr/ilm-admin** now uses a responsive,
+SwiftUI-inspired style. Email + password opens the dashboard; a Google
+Authenticator sheet appears only after initiating a sensitive action (Nexi
+key save/replace, application key creation/deactivation, or CSV export).
+These operations execute **only after server-side TOTP validation** and CSRF
+checks. Optional extra network access controls are recommended for payment
+operations. Production payments remain disabled.

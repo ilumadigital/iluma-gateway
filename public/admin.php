@@ -6,7 +6,8 @@ $host=strtolower(explode(':',$_SERVER['HTTP_HOST']??'')[0]);
 if($host!==Config::get('GATEWAY_HOST')||!in_array(parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH),['/ilm-admin','/ilm-admin/'],true)){http_response_code(404);exit('Not found');}
 header('X-Content-Type-Options: nosniff');header('Referrer-Policy: no-referrer');header('X-Frame-Options: DENY');
 header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
-header("Content-Security-Policy: default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+header("Content-Security-Policy: default-src 'none'; style-src 'self'; script-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+header('Cache-Control: private, no-store, max-age=0');
 ini_set('session.use_strict_mode','1');ini_set('session.cookie_httponly','1');ini_set('session.cookie_secure','1');ini_set('session.cookie_samesite','Strict');
 ini_set('session.gc_maxlifetime','1800');session_name('__Host-ilumaAdmin');session_set_cookie_params(['lifetime'=>0,'path'=>'/','secure'=>true,'httponly'=>true,'samesite'=>'Strict']);session_start();
 $reg=null;$error='';$notice='';$reveal='';
@@ -15,13 +16,32 @@ function html(string $v):string{return Security::h($v);}
 function euro(int $v):string{return number_format($v/100,2,',','.').' €';}
 function localDate(?string $utc):string { if(!$utc)return '—';return (new DateTimeImmutable($utc,new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('Europe/Athens'))->format('d/m/Y H:i'); }
 function credentialEnv():string {return \Iluma\Gateway\AdminContext::environment((array)($_SESSION??[]));}
+/** Mandatory server-side TOTP verification before sensitive actions. */
+function requireStepUp(\PDO $registry,string $code):void {
+ $adminId=(int)($_SESSION['admin_id']??0);
+ if($adminId<1)throw new HttpError(403,'Not authenticated');
+ if(time()<(int)($_SESSION['stepup_block_until']??0))throw new HttpError(429,'MFA temporarily locked');
+ $user=Db::one($registry,'SELECT totp_secret_box FROM admin_users WHERE id=? AND enabled=1',[$adminId]);
+ $valid=$user && Security::otpVerify(Security::decrypt($user['totp_secret_box']),$code);
+ if(!$valid){
+  $fails=(int)($_SESSION['stepup_fails']??0)+1;
+  $_SESSION['stepup_fails']=$fails;
+  if($fails>=5)$_SESSION['stepup_block_until']=time()+900;
+  Db::exec($registry,'INSERT INTO audit_logs(admin_id,action,target,ip) VALUES(?,?,?,?)',[$adminId,'admin_mfa_failed','step_up',$_SERVER['REMOTE_ADDR']??null]);
+  throw new HttpError(403,'MFA required');
+ }
+ unset($_SESSION['stepup_fails'],$_SESSION['stepup_block_until']);
+}
+
 function page(string $title,string $body,string $error='',string $notice=''):never {
  $user=isset($_SESSION['admin_id']);$nav='';$environment=credentialEnv();$csrf=Security::csrf();
- if($user){foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','export'=>'Εξαγωγή CSV','settings'=>'Ρυθμίσεις'] as $slug=>$label)$nav.='<a href="/ilm-admin/?p='.$slug.'">'.html($label).'</a>';
+ if($user){foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','settings'=>'Ρυθμίσεις'] as $slug=>$label)$nav.='<a href="/ilm-admin/?p='.$slug.'">'.html($label).'</a>';
+ $nav.='<form method="post" class="nav-action" data-stepup="Εξαγωγή CSV"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="export"><input type="hidden" name="otp" value=""><button type="submit">Εξαγωγή CSV</button></form>';
  $nav.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><button name="action" value="logout">Αποσύνδεση</button></form>';
  $nav.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="environment"><select name="environment"><option value="staging"'.($environment==='staging'?' selected':'').'>STAGING</option><option value="production"'.($environment==='production'?' selected':'').'>PRODUCTION</option></select><button>Επιλογή</button></form>';
  }
- echo '<!doctype html><html lang="el"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.html($title).' — ILUMA</title><link rel="stylesheet" href="/ilm-admin/admin.css"></head><body><header><strong>ILUMA<span> / PAYMENT GATEWAY</span></strong><span>'.($user?html(strtoupper($environment)).' — '.($environment==='staging'?'TEST ENVIRONMENT':'LIVE DATA (CHARGES LOCKED BY DEFAULT)'):'Προστατευμένη πρόσβαση').'</span></header><div class="layout"><aside>'.$nav.'</aside><main><h1>'.html($title).'</h1>'.($error?'<p class="alert">'.html($error).'</p>':'').($notice?'<p class="notice">'.html($notice).'</p>':'').$body.'</main></div></body></html>';exit;
+ $mfaDialog=$user?'<dialog id="mfa-dialog" class="mfa-dialog" aria-labelledby="mfa-title" aria-describedby="mfa-description"><div class="mfa-sheet"><div class="mfa-icon">✳</div><h2 id="mfa-title">Επιβεβαίωση ενέργειας</h2><p id="mfa-description">Άνοιξε το Google Authenticator και βάλε τον 6ψήφιο κωδικό. Η ενέργεια δεν εκτελείται πριν επιβεβαιώσεις.</p><p class="mfa-action-label" id="mfa-action-label"></p><label for="mfa-code">Κωδικός επιβεβαίωσης</label><input id="mfa-code" class="mfa-code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000"><p id="mfa-validation" class="mfa-validation" role="alert" hidden>Συμπλήρωσε έναν 6ψήφιο κωδικό.</p><div class="mfa-actions"><button type="button" class="button-secondary" id="mfa-cancel">Άκυρο</button><button type="button" id="mfa-confirm">Επιβεβαίωση</button></div></div></dialog>':'';
+ echo '<!doctype html><html lang="el"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.html($title).' — ILUMA</title><link rel="stylesheet" href="/ilm-admin/admin.css"></head><body class="'.($user?'is-authenticated':'is-login').'"><header><strong class="brand-mark">ILUMA<span> / GATEWAY</span></strong><span>'.($user?html(strtoupper($environment)).' — '.($environment==='staging'?'TEST ENVIRONMENT':'LIVE DATA (CHARGES LOCKED BY DEFAULT)'):'Προστατευμένη πρόσβαση').'</span></header><div class="layout"><aside aria-label="Πλοήγηση διαχειριστικού">'.$nav.'</aside><main id="main-content"><h1>'.html($title).'</h1>'.($error?'<p class="alert" role="alert">'.html($error).'</p>':'').($notice?'<p class="notice" role="status">'.html($notice).'</p>':'').$body.'</main></div>'.$mfaDialog.'<script defer src="/ilm-admin/admin.js"></script></body></html>';exit;
 }
 try {
  if($_SERVER['REQUEST_METHOD']==='POST') {
@@ -35,10 +55,10 @@ try {
     http_response_code(429);
     page('Πολλές απόπειρες σύνδεσης','<p>Προσπαθήστε ξανά αργότερα.</p>');
    }
-   $email=(string)($_POST['email']??'');$pw=(string)($_POST['password']??'');$otp=(string)($_POST['otp']??'');
+   $email=(string)($_POST['email']??'');$pw=(string)($_POST['password']??'');
    $u=Db::one($reg,'SELECT * FROM admin_users WHERE email=? AND enabled=1',[$email]);
    $allowed=$u && (!$u['locked_until']||strtotime($u['locked_until'].' UTC')<time());
-   $success=$allowed && password_verify($pw,$u['passhash']) && Security::otpVerify(Security::decrypt($u['totp_secret_box']),$otp);
+   $success=$allowed && password_verify($pw,$u['passhash']);
    if(!$success){if($u){Db::exec($reg,'UPDATE admin_users SET failed_attempts=failed_attempts+1,locked_until=IF(failed_attempts>=4,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 15 MINUTE),locked_until) WHERE id=?',[$u['id']]);}audit('admin_login_failed','backoffice');$error='Αποτυχία σύνδεσης.';}
    else{session_regenerate_id(true);$_SESSION['admin_id']=$u['id'];$_SESSION['since']=time();$_SESSION['last']=time();$_SESSION['view_env']='staging';Db::exec($reg,'UPDATE admin_users SET failed_attempts=0,locked_until=NULL,last_login_at=UTC_TIMESTAMP() WHERE id=?',[$u['id']]);audit('login','backoffice');header('Location: /ilm-admin/');exit;}
   } elseif($action==='logout'){if(!empty($_SESSION['admin_id']))audit('logout','backoffice');$_SESSION=[];session_destroy();header('Location: /ilm-admin/');exit;}
@@ -47,7 +67,7 @@ try {
   elseif($action==='nexi-save'){
    $env=credentialEnv();$value=(string)($_POST['secret']??'');$otp=(string)($_POST['otp']??'');
    $u=Db::one($reg,'SELECT totp_secret_box FROM admin_users WHERE id=?',[$_SESSION['admin_id']]);
-   if(!Security::otpVerify(Security::decrypt($u['totp_secret_box']),$otp))throw new HttpError(403,'MFA required');
+   requireStepUp($reg,$otp);
    if(strlen($value)<12||strlen($value)>300)throw new HttpError(422,'Invalid credential');
    Db::exec($reg,"INSERT INTO nexi_credentials(environment,secret_box,updated_at) VALUES(?,?,UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE secret_box=VALUES(secret_box),updated_at=UTC_TIMESTAMP(),check_status='untested'",[$env,Security::encrypt($value)]);
    audit('nexi_credential_replace',$env);$notice='Το κλειδί αποθηκεύτηκε κρυπτογραφημένο.';
@@ -58,23 +78,27 @@ try {
   } elseif($action==='key-create'){
    $env=credentialEnv();$otp=(string)($_POST['otp']??'');
    $u=Db::one($reg,'SELECT totp_secret_box FROM admin_users WHERE id=?',[$_SESSION['admin_id']]);
-   if(!Security::otpVerify(Security::decrypt($u['totp_secret_box']),$otp))throw new HttpError(403,'MFA required');
+   requireStepUp($reg,$otp);
    $a=Db::one($reg,"SELECT id FROM applications WHERE slug='iradiosgr'");$key='ilg_'.Security::id(24);$secret=Security::id(32);
    Db::exec($reg,'INSERT INTO application_credentials(application_id,environment,key_hash,key_prefix,secret_box) VALUES(?,?,?,?,?)',[$a['id'],$env,hash('sha256',$key),substr($key,0,18),Security::encrypt($secret)]);
    audit('api_key_create',$env);$reveal='<div class="secret"><strong>Εμφάνιση ΜΟΝΟ ΜΙΑ ΦΟΡΑ</strong><pre>'.html('KEY: '.$key."\nSECRET: ".$secret).'</pre></div>';
   } elseif($action==='key-disable'){
-   $env=credentialEnv();$otp=(string)($_POST['otp']??'');$u=Db::one($reg,'SELECT totp_secret_box FROM admin_users WHERE id=?',[$_SESSION['admin_id']]);if(!Security::otpVerify(Security::decrypt($u['totp_secret_box']),$otp))throw new HttpError(403,'MFA required');
+   $env=credentialEnv();$otp=(string)($_POST['otp']??'');$u=Db::one($reg,'SELECT totp_secret_box FROM admin_users WHERE id=?',[$_SESSION['admin_id']]);requireStepUp($reg,$otp);
    $id=(int)($_POST['id']??0);Db::exec($reg,'UPDATE application_credentials SET enabled=0 WHERE id=? AND environment=?',[$id,$env]);audit('api_key_disable',$env.':'.$id);$notice='Το κλειδί απενεργοποιήθηκε.';
+  } elseif($action==='export'){
+   requireStepUp($reg,(string)($_POST['otp']??''));
+   $_GET['p']='export';
   }
  }
  if(empty($_SESSION['admin_id'])){
-  $csrf=Security::csrf();$form='<form class="login" method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="login"><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Κωδικός<input name="password" type="password" required autocomplete="current-password"></label><label>Κωδικός MFA (6 ψηφία)<input name="otp" inputmode="numeric" maxlength="6" required autocomplete="one-time-code"></label><button>Σύνδεση</button></form>';
+  $csrf=Security::csrf();$form='<form class="login" method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="login"><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Κωδικός<input name="password" type="password" required autocomplete="current-password"></label><p class="login-hint">Το Google Authenticator ζητείται μόνο όταν επιβεβαιώνεις μια ευαίσθητη ενέργεια.</p><button>Σύνδεση</button></form>';
   page('Σύνδεση διαχειριστή',$form,$error);
  }
  if($reg===null)$reg=Db::get('registry');
  if(time()-(int)($_SESSION['last']??0)>1800 || time()-(int)($_SESSION['since']??0)>28800){$_SESSION=[];session_destroy();header('Location: /ilm-admin/');exit;}
  $_SESSION['last']=time();$env=credentialEnv();$db=Db::get($env);$p=(string)($_GET['p']??'dashboard');$csrf=Security::csrf();$content=$reveal;
  if($p==='export'){
+  if(($_SERVER['REQUEST_METHOD']??'GET')!=='POST')throw new HttpError(403,'MFA required for export');
   audit('csv_export',$env);$rows=Db::all($db,'SELECT p.id,p.order_id,p.created_at,c.email,pr.title,p.amount_cents,p.currency,p.status FROM payments p JOIN customers c ON c.id=p.customer_id JOIN products pr ON pr.id=p.product_id ORDER BY p.created_at DESC LIMIT 10000');
   header('Content-Type: text/csv; charset=utf-8');header('Content-Disposition: attachment; filename="iluma-'.$env.'-payments.csv"');$out=fopen('php://output','w');
   fwrite($out,"\xEF\xBB\xBF");fputcsv($out,['Payment ID','Nexi Order ID','Ημερομηνία Αθήνας','Email','Υπηρεσία','Cents','Currency','Status']);
@@ -129,20 +153,24 @@ try {
   $apps=Db::all($reg,'SELECT * FROM applications');foreach($apps as $app)$content.='<article><h2>'.html($app['name']).'</h2><p>Staging: '.html($app['staging_origin']).'</p><p>Production: '.html($app['production_origin']).'</p></article>';
  } elseif($p==='keys'){
   $keys=Db::all($reg,'SELECT id,key_prefix,created_at,last_used_at,enabled FROM application_credentials WHERE environment=? ORDER BY id DESC',[$env]);
-  $content.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="key-create"><p>Νέο API key για iRadiosGR / '.html($env).'</p><label>MFA<input name="otp" required maxlength="6" autocomplete="one-time-code"></label><button>Δημιουργία κλειδιού</button></form>';
+  $content.='<form method="post" data-stepup="Δημιουργία API Key"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="key-create"><p>Νέο API key για iRadiosGR / '.html($env).'</p><input type="hidden" name="otp" value=""><button>Δημιουργία κλειδιού</button></form>';
   $content.='<table><tr><th>Key Prefix</th><th>Δημιουργία</th><th>Τελευταία χρήση</th><th>Ενεργό</th><th></th></tr>';
-  foreach($keys as $k)$content.='<tr><td>'.html($k['key_prefix']).'…</td><td>'.html($k['created_at']).'</td><td>'.html($k['last_used_at']??'—').'</td><td>'.($k['enabled']?'Ναι':'Όχι').'</td><td><form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="id" value="'.(int)$k['id'].'"><input name="otp" inputmode="numeric" maxlength="6" placeholder="MFA" required><button name="action" value="key-disable">Απενεργοποίηση</button></form></td></tr>';
+  foreach($keys as $k)$content.='<tr><td>'.html($k['key_prefix']).'…</td><td>'.html($k['created_at']).'</td><td>'.html($k['last_used_at']??'—').'</td><td>'.($k['enabled']?'Ναι':'Όχι').'</td><td><form method="post" data-stepup="Απενεργοποίηση API Key"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="id" value="'.(int)$k['id'].'"><input type="hidden" name="action" value="key-disable"><input type="hidden" name="otp" value=""><button class="danger-button" type="submit">Απενεργοποίηση</button></form></td></tr>';
   $content.='</table>';
  } elseif($p==='nexi'){
   $row=Db::one($reg,'SELECT * FROM nexi_credentials WHERE environment=?',[$env]);$masked=$row?'•••••••• (κρυπτογραφημένο)':'Δεν έχει οριστεί';
   $content.='<p>Endpoint: '.html(Config::base($env)).'</p><p>API key: '.html($masked).'</p><p>Last Connection: '.html($row['last_checked_at']??'—').'</p><p>Connection Status: '.html($row['check_status']??'not configured').'</p>';
-  $content.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="nexi-save"><label>Νέο Nexi API Key<input name="secret" type="password" autocomplete="off" required></label><label>MFA<input name="otp" maxlength="6" required></label><button>Αποθήκευση / Αντικατάσταση</button></form>';
+  $content.='<form method="post" data-stepup="Αποθήκευση Nexi API Key"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="nexi-save"><label>Νέο Nexi API Key<input name="secret" type="password" autocomplete="off" required></label><input type="hidden" name="otp" value=""><button>Αποθήκευση / Αντικατάσταση</button></form>';
   $content.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><button name="action" value="nexi-test">Έλεγχος Σύνδεσης (χωρίς χρέωση)</button></form>';
  } elseif($p==='settings'){
-  $content.='<p>Διαχειριστικό: πρόσβαση μέσω Zero Trust/VPN + TOTP MFA.</p><p>Live transactions: '.(Config::liveAllowed()?'Ενεργοποίηση από runtime — απαιτείται ανεξάρτητος έλεγχος.':'ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΕΣ').'</p>';
+  $content.='<p>Σύνδεση με email και password. Το Google Authenticator ζητείται για αλλαγές κλειδιών και εξαγωγή CSV, πριν εφαρμοστεί η ενέργεια.</p><p>Live transactions: '.(Config::liveAllowed()?'Ενεργοποίηση από runtime — απαιτείται ανεξάρτητος έλεγχος.':'ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΕΣ').'</p>';
  } else throw new HttpError(404,'Not found');
  page(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','payment'=>'Ανάλυση πληρωμής','settings'=>'Ρυθμίσεις'][$p]??'ILUMA',$content,$error,$notice);
 } catch(\Throwable $e){error_log('ILUMA admin '.get_class($e).': '.$e->getMessage());
- if(!empty($_SESSION['admin_id']))page('Σφάλμα','<p>Η ενέργεια δεν ολοκληρώθηκε.</p>');
+ if(!empty($_SESSION['admin_id'])){
+  if($e instanceof HttpError && $e->getMessage()==='MFA required')
+   page('Επιβεβαίωση 2FA','<p class="alert" role="alert">Ο κωδικός Google Authenticator δεν έγινε δεκτός. Δοκίμασε ξανά από την ενέργεια.</p>');
+  page('Δεν ολοκληρώθηκε','<p class="alert" role="alert">Η ενέργεια δεν ολοκληρώθηκε. Έλεγξε τα στοιχεία και προσπάθησε ξανά.</p>');
+ }
  page('Σύνδεση','<p>Η πρόσβαση δεν είναι διαθέσιμη.</p>');
 }

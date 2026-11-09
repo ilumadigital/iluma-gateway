@@ -46,4 +46,15 @@ check(AdminContext::environment([])==='staging','admin login page uses staging w
 check(AdminContext::environment(['view_env'=>'staging'])==='staging','admin staging selection');
 check(AdminContext::environment(['view_env'=>'production'])==='production','admin production selection');
 check(AdminContext::environment(['view_env'=>'unexpected'])==='staging','unknown admin display environment falls back to staging');
+$adminJs=file_get_contents(dirname(__DIR__).'/public/admin.js');
+$adminCss=file_get_contents(dirname(__DIR__).'/public/admin.css');
+check($adminJs!==false && str_contains($adminJs,'requestSubmit'),'step-up popup submits after approval');
+check($adminCss!==false && str_contains($adminCss,'.mfa-dialog'),'MFA confirmation sheet styles present');
+check(str_contains($routing,'^ilm-admin/admin\.js$ public/admin.js'),'admin script routed correctly');
+check(str_contains($adminSource,"script-src 'self'"),'strict same-origin script CSP');
+check(str_contains($adminSource,'password_verify($pw,$u[\'passhash\']);'),'login verifies password without TOTP');
+check(str_contains($adminSource,'function requireStepUp('),'server-side MFA guard exists');
+check(substr_count($adminSource,'requireStepUp($reg,')>=4,'sensitive actions and CSV export have MFA guard');
+check(str_contains($adminSource,'MFA required for export'),'CSV downloads require verified POST');
+check(str_contains($adminSource,'data-stepup='),'sensitive admin forms use action confirmation');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

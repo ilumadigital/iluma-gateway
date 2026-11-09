@@ -60,10 +60,9 @@ tables, the master key format, pinned Nexi endpoints and the production
 lock. It does not reveal secrets or call Nexi.
 
 The admin uses https://gateway.iluma.gr/ilm-admin (also /ilm-admin/) on the
-same Git deployment. Do not create a second hostname. The login is secured
-by an administrator password (Argon2id), Google Authenticator-compatible
-TOTP MFA, a session, CSRF protection, failed-account lockout and an
-IP-based login throttle recorded in the registry audit log. Optional
+same Git deployment. Do not create a second hostname. The login requires email and password (Argon2id). A Google Authenticator-
+compatible TOTP confirmation is required for sensitive writes and CSV exports.
+The session uses CSRF protection, login lockout and an IP-based throttle. Optional
 VPN/Zero Trust access to /ilm-admin* is defense in depth and strongly
 recommended for a payment administration panel, but the login page no
 longer depends on ADMIN_ACCESS_VERIFIED. The old ADMIN_HOST and
@@ -77,7 +76,7 @@ the SSH terminal (replace the email address):
     unset ADMIN_INITIAL_PASSWORD
 
 The CLI prints a one-time Base32 TOTP secret. Enter it manually into
-your authenticator and never copy it to public logs or Git. Log in at https://gateway.iluma.gr/ilm-admin with password and the MFA code.
+your authenticator and never copy it to public logs or Git. Log in at https://gateway.iluma.gr/ilm-admin with email and password; MFA is requested when confirming a sensitive action.
 Do not disable the login rate limit, account lockout or TOTP verification.
 
 ## Sandbox onboarding
@@ -96,7 +95,7 @@ a PCI scope assessment remain prerequisites.
 ## Admin path checks
 
 - Visit https://gateway.iluma.gr/ilm-admin and verify the Email / Password / MFA login form loads.
-- The admin requires all three valid factors for a successful login.
+- Login needs email and password; sensitive actions then require Google Authenticator confirmation.
 - Set an optional VPN or Zero Trust gate around /ilm-admin* if available for extra protection.
 - The root path / and direct /public/admin.php must stay 404. No new DNS subdomain is required.
 
@@ -131,3 +130,18 @@ prove PHP-FPM configuration. Run (never paste any passwords):
 The doctor now checks that the first enabled administrator's stored MFA secret
 can be decrypted with the current MASTER_KEY_B64. If this fails, do not
 regenerate the master key randomly; investigate the historical key securely.
+
+## SwiftUI-style admin and action-based MFA
+
+The responsive admin uses a light, native-app-inspired layout with notification
+cards and a confirmation sheet. Login requires email and password. A Google
+Authenticator modal appears only after the administrator clicks on saving or
+replacing a Nexi API key, creating/disabling an application API key, or
+exporting CSV. Changes and exports are **performed only after** successful
+server-side TOTP verification. The step-up check applies even if a client
+bypasses JavaScript; five failed MFA attempts cause a 15-minute session lock.
+No TOTP is needed just to view the dashboard or check the Nexi connection.
+The optional VPN/Zero Trust gate remains recommended as extra protection.
+
+Verify that both /ilm-admin/admin.css and /ilm-admin/admin.js return HTTP 200.
+The admin CSP permits scripts only from 'self'. Do not enable live payments.

@@ -57,4 +57,6 @@ check(str_contains($adminSource,'function requireStepUp('),'server-side MFA guar
 check(substr_count($adminSource,'requireStepUp($reg,')>=4,'sensitive actions and CSV export have MFA guard');
 check(str_contains($adminSource,'MFA required for export'),'CSV downloads require verified POST');
 check(str_contains($adminSource,'data-stepup='),'sensitive admin forms use action confirmation');
+$nexiSource=file_get_contents(dirname(__DIR__).'/src/NexiClient.php');
+check($nexiSource!==false && str_contains($nexiSource,"if(\$this->environment==='staging')\$session['captureType']='IMPLICIT';"),'Sandbox HPP explicitly requests implicit capture');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

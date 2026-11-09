@@ -145,3 +145,20 @@ The optional VPN/Zero Trust gate remains recommended as extra protection.
 
 Verify that both /ilm-admin/admin.css and /ilm-admin/admin.js return HTTP 200.
 The admin CSP permits scripts only from 'self'. Do not enable live payments.
+
+## Sandbox authorization versus captured payment
+
+A successful Hosted Payment Page can return an AUTHORIZATION operation with
+`authorizedAmount=100`, `capturedAmount=0` and no CAPTURE. This is **not** a
+confirmed payment and must never unlock iRadios Premium. XPay Greece
+supports `paymentSession.captureType=IMPLICIT` to automatically confirm
+approved card payments, even when the demo terminal defaults to EXPLICIT.
+`src/NexiClient.php` now supplies that field **only for Staging checkouts**;
+Production remains unchanged and disabled. This changes only future HPP
+sessions; existing authorized orders are NOT captured retroactively.
+An outstanding Sandbox authorization can be manually captured through the
+provider's supported accounting process or allowed to expire; never edit
+local payment rows directly to 'paid'. Read the provider order again after
+a successful capture. Do not create duplicate checkouts to resolve an
+existing intent. For a separate new sandbox test, use a new purchase intent
+and an unused idempotency key.

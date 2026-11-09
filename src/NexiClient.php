@@ -33,6 +33,9 @@ final class NexiClient {
    'resultUrl'=>'https://'.Config::get('GATEWAY_HOST').'/checkout/result?order='.$orderId,
    'cancelUrl'=>'https://'.Config::get('GATEWAY_HOST').'/checkout/cancel?order='.$orderId,
    'notificationUrl'=>'https://'.Config::get('GATEWAY_HOST').'/nexi/'.$this->environment.'/notification'];
+  // Sandbox checkout must capture on approval even if the demo terminal
+  // defaults to EXPLICIT. No change to Production capture behavior.
+  if($this->environment==='staging')$session['captureType']='IMPLICIT';
   if($recurrence!==null) $session['recurrence']=$recurrence;
   return $this->request('POST','/api/v1/orders/hpp',['order'=>['orderId'=>$orderId,'amount'=>(string)$amount,'currency'=>'EUR','customerId'=>$customerRef],'paymentSession'=>$session]);
  }

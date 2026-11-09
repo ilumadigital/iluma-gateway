@@ -107,4 +107,10 @@ check(str_contains($paymentSource,"period_end_at=DATE_ADD(UTC_TIMESTAMP(),INTERV
 $manageSource=file_get_contents(dirname(__DIR__).'/bin/manage.php');
 check(str_contains($manageSource,'sandbox-subscription-status') &&
  str_contains($manageSource,"(\$argv[2]??'')!=='staging'"),'Staging CLI guard on subscription pilot');
+$errBody=Security::json(['errors'=>[['code'=>'PS0000','description'=>'Missing paymentSession.recurrence.contractFrequency']]]);
+check(NexiClient::errorSummary($errBody,'test-private-key')==='PS0000 Missing paymentSession.recurrence.contractFrequency','Provider validation error details retained without raw response');
+$errBody=Security::json(['errors'=>[['code'=>'GW0001','description'=>'Incorrect url https://example.net/?secret=abc test-private-key']]]);
+$errSummary=NexiClient::errorSummary($errBody,'test-private-key');
+check(!str_contains($errSummary,'example.net')&&!str_contains($errSummary,'test-private-key') && str_contains($errSummary,'GW0001'),'Provider errors redact urls and configured key');
+check(NexiClient::errorSummary('not a json','key')==='','Malformed provider error is never dumped');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

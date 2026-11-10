@@ -24,10 +24,10 @@ final class RecurringMandates {
   return $enable;
  }
  public static function contractId():string {
-  return 'ILM'.strtoupper(substr(Security::id(),0,24));
+  return 'ILM'.strtoupper(substr(Security::id(),0,15));
  }
  public static function recurrence(string $contractId):array {
-  if(!preg_match('/^ILM[A-F0-9]{24}$/D',$contractId))throw new \InvalidArgumentException('Contract id');
+  if(!preg_match('/^ILM(?:[A-F0-9]{15}|[A-F0-9]{24})$/D',$contractId))throw new \InvalidArgumentException('Contract id');
   // Calendar months can be 28 days apart. Nexi's scheduled minimum interval
   // is therefore 28 days; merchant schedule remains calendar monthly in UTC.
   return [

@@ -4,6 +4,17 @@ require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Db,Security};
 if(PHP_SAPI!=='cli')exit(1);
 $command=$argv[1]??'';
+if($command==='migrate-staging-saved-cards'){
+ if(\Iluma\Gateway\Config::get('APP_ENV')==='production')die("Cannot migrate from a production runtime\n");
+ $db=Db::get('staging');
+ $file=dirname(__DIR__).'/database/migrations/20261110_staging_saved_cards.sql';
+ $sql=file_get_contents($file);
+ if($sql===false)die("Migration missing\n");
+ // A single, idempotent CREATE TABLE. No seed data, card data or production writes.
+ $db->exec($sql);
+ echo "STAGING saved_card_agreements schema ready. No payment created.\n";
+ exit;
+}
 if ($command === 'doctor') {
  echo 'CLI PHP: '.PHP_VERSION.PHP_EOL;
  echo 'PRIVATE ENV FILE: '.(is_file(\Iluma\Gateway\EnvLoader::privateFilePath(dirname(__DIR__)))?'PRESENT':'NOT FOUND (check environment variables)').PHP_EOL;
@@ -77,4 +88,4 @@ if($command==='product'){
  Db::exec($db,'INSERT INTO products(application_id,sku,title,amount_cents) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title)',[$app['id'],$sku,$sku,$cents]);
  echo "Product registered. Existing prices NEVER auto-changed.\n";exit;
 }
-echo "Commands: doctor | create-admin email | create-key staging|production | product staging|production sku cents | sandbox-subscription staging test-ref | sandbox-subscription-status staging test-ref\n";
+echo "Commands: migrate-staging-saved-cards | doctor | create-admin email | create-key staging|production | product staging|production sku cents | sandbox-subscription staging test-ref | sandbox-subscription-status staging test-ref\n";

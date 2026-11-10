@@ -118,11 +118,109 @@ final class RecurringMandates {
   }
   $paid=Db::one($db,'SELECT confirmed_at FROM payments WHERE id=?',[$paymentId]);
   if(!$paid||!$paid['confirmed_at'])return;
-  $end=(new \DateTimeImmutable($paid['confirmed_at'],new \DateTimeZone('UTC')))
-    ->modify('+1 month')->format('Y-m-d H:i:s');
+  $end=self::monthAfter((string)$paid['confirmed_at']);
   Db::exec($db,"UPDATE recurring_mandates SET status='active',verified_at=UTC_TIMESTAMP(),
    paid_through_at=?,next_due_at=? WHERE id=? AND status IN ('pending','verification_pending')",
    [$end,$end,$m['id']]);
+ }
+ /** Calendar-month arithmetic with correct February/31st clamping in UTC. */
+ public static function monthAfter(string $value):string {
+  $d=new \DateTimeImmutable($value,new \DateTimeZone('UTC'));
+  $next=$d->modify('first day of next month');
+  $day=min((int)$d->format('j'),(int)$next->format('t'));
+  return $next->setDate((int)$next->format('Y'),(int)$next->format('n'),$day)
+    ->setTime((int)$d->format('H'),(int)$d->format('i'),(int)$d->format('s'))
+    ->format('Y-m-d H:i:s');
+ }
+ /**
+  * Reserve exactly ONE payment per subscribed calendar-month cycle in an
+  * atomic MySQL transaction, BEFORE POST /orders/mit. No retries of a
+  * provider POST after an error/timeout, and never run outside staging.
+  */
+ public static function chargeDue(string $env,int $limit=5):void {
+  if($env!=='staging'||Config::get('APP_ENV')==='production'||
+     Config::get('MIT_SANDBOX_EXECUTION_ENABLED')!=='1'||
+     Config::get('MIT_SANDBOX_UAT_APPROVED')!=='1')return;
+  $db=Db::get('staging');
+  $rows=Db::all($db,"SELECT id FROM recurring_mandates
+   WHERE status='active' AND verified_at IS NOT NULL AND cancelled_at IS NULL
+    AND next_due_at<=UTC_TIMESTAMP() ORDER BY next_due_at LIMIT ".max(1,min(5,$limit)));
+  foreach($rows as $row){
+   $mandateId=$row['id'];$payment=null;$mandate=null;
+   $db->beginTransaction();
+   try{
+    $mandate=Db::one($db,"SELECT m.*,p.product_id FROM recurring_mandates m
+     JOIN payments p ON p.id=m.initial_payment_id
+     WHERE m.id=? FOR UPDATE",[$mandateId]);
+    if(!$mandate||$mandate['status']!=='active'||$mandate['cancelled_at']!==null||
+       !$mandate['verified_at']||!$mandate['next_due_at']||
+       strtotime($mandate['next_due_at'].' UTC')>time()){$db->rollBack();continue;}
+    $existing=Db::one($db,'SELECT id FROM recurring_cycles WHERE mandate_id=? AND cycle_due_at=? FOR UPDATE',
+       [$mandateId,$mandate['next_due_at']]);
+    if($existing){$db->rollBack();continue;}
+    $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
+    $req='mit-'.$mandateId.'-'.gmdate('YmdHis',strtotime($mandate['next_due_at'].' UTC'));
+    $hash=hash('sha256',Security::json([$mandateId,$mandate['next_due_at'],399,'EUR']));
+    Db::exec($db,"INSERT INTO payments
+     (id,application_id,customer_id,product_id,order_id,request_key,request_hash,
+      amount_cents,currency,status)
+     VALUES(?,?,?,?,?,?,?,399,'EUR','pending')",
+     [$pid,$mandate['application_id'],$mandate['customer_id'],$mandate['product_id'],$order,$req,$hash]);
+    Db::exec($db,"INSERT INTO recurring_cycles
+     (id,mandate_id,cycle_due_at,payment_id,status)
+     VALUES(?,?,?,?, 'pending')",[Security::id(),$mandateId,$mandate['next_due_at'],$pid]);
+    Payments::log($db,$pid,'mit_reserved','Προγραμματισμένη ανανέωση. Ακριβώς μία προσπάθεια Nexi.');
+    $db->commit();$payment=['id'=>$pid,'order'=>$order];
+   }catch(\Throwable $e){
+    if($db->inTransaction())$db->rollBack();
+    error_log('MIT reservation failed (no provider attempt)');continue;
+   }
+   // If the user cancelled after reservation but before outbound request,
+   // abort without touching the provider; the cancelled mandate stays stopped.
+   $check=Db::one($db,'SELECT status,cancelled_at FROM recurring_mandates WHERE id=?',[$mandateId]);
+   if(!$check||$check['status']!=='active'||$check['cancelled_at']!==null){
+    Db::exec($db,"UPDATE payments SET status='canceled' WHERE id=? AND status='pending'",[$payment['id']]);
+    Db::exec($db,"UPDATE recurring_cycles SET status='cancelled' WHERE payment_id=?",
+      [$payment['id']]);continue;
+   }
+   try{
+    // Provider may have accepted the POST even if transport times out. Do not
+    // repeat it; the worker reconciles this exact immutable order via GET.
+    NexiClient::forEnvironment($env)->startMit(
+     $payment['order'],$mandate['provider_customer_id'],$mandate['contract_id'],399);
+    Payments::log($db,$payment['id'],'mit_submitted','Η Nexi έλαβε το αίτημα ανανέωσης. Αναμονή επιβεβαίωσης.');
+   }catch(\Throwable $e){
+    Db::exec($db,"UPDATE payments SET status='unknown'
+      WHERE id=? AND status='pending'",[$payment['id']]);
+    Db::exec($db,"UPDATE recurring_cycles SET status='unknown' WHERE payment_id=?",[$payment['id']]);
+    Payments::log($db,$payment['id'],'unknown','Μη επιβεβαιωμένη MIT προσπάθεια. Μόνο provider GET, χωρίς δεύτερη χρέωση.');
+    error_log('MIT outcome requires reconciliation; never re-POST');
+   }
+   try{Payments::reconcile($env,$payment['order']);}
+   catch(\Throwable $e){error_log('MIT immediate read-only reconciliation pending');}
+  }
+ }
+ /** Called inside Payments::reconcile transaction on a genuine captured order. */
+ public static function settleCycle(\PDO $db,string $paymentId,string $status):void {
+  $cycle=Db::one($db,"SELECT c.id,c.cycle_due_at,c.mandate_id,m.status AS mandate_status
+    FROM recurring_cycles c JOIN recurring_mandates m ON m.id=c.mandate_id
+    WHERE c.payment_id=? FOR UPDATE",[$paymentId]);
+  if(!$cycle)return;
+  if($status==='paid'){
+   Db::exec($db,"UPDATE recurring_cycles SET status='paid' WHERE id=? AND status<>'paid'",[$cycle['id']]);
+   if($cycle['mandate_status']==='active'){
+    $newEnd=self::monthAfter((string)$cycle['cycle_due_at']);
+    Db::exec($db,"UPDATE recurring_mandates SET
+      paid_through_at=?,next_due_at=? WHERE id=? AND status='active'",
+     [$newEnd,$newEnd,$cycle['mandate_id']]);
+   }
+  }elseif(in_array($status,['failed','canceled'],true)){
+   Db::exec($db,'UPDATE recurring_cycles SET status=? WHERE id=?',[$status,$cycle['id']]);
+   if($cycle['mandate_status']==='active')
+    Db::exec($db,"UPDATE recurring_mandates SET status='past_due',
+     next_due_at=NULL,last_error_code='CHARGE_FAILED' WHERE id=? AND status='active'",
+     [$cycle['mandate_id']]);
+  }
  }
  public static function pendingVerification(string $env,int $limit=10):void {
   if($env!=='staging')return;

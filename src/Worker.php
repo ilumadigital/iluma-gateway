@@ -6,7 +6,19 @@ final class Worker {
  public static function reconcile(string $env,int $limit=30):void{
   $db=Db::get($env);
   $orders=Db::all($db,"SELECT order_id FROM payments WHERE status IN ('unknown','redirect','pending') AND created_at < DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 MINUTE) ORDER BY created_at LIMIT ".max(1,min($limit,100)));
-  foreach($orders as $row){try {Payments::reconcile($env,$row['order_id']);}catch(\Throwable $e){error_log('Reconcile error: '.$e->getMessage());}}
+  foreach($orders as $row){
+   try{Payments::reconcile($env,$row['order_id']);}
+   catch(\Throwable $e){
+    // An authoritative provider GET 404 after its HPP returned HTTP400
+    // permits closing only THAT rejected initial checkout. Do not unlock
+    // general unknown orders, pending CAPTURE, or any real Nexi order.
+    if($env==='staging'&&str_starts_with($e->getMessage(),'Nexi status 404 ')){
+     try{if(Payments::reconcileRejectedHpp404($env,$row['order_id']))continue;}
+     catch(\Throwable $inner){error_log('Rejected HPP reconciliation deferred');}
+    }
+    error_log('Reconcile error: '.$e->getMessage());
+   }
+  }
  }
  /**
   * Best-effort, idempotent delivery for ONE existing paid payment.

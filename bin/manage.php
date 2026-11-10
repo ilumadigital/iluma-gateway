@@ -4,6 +4,29 @@ require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Db,Security};
 if(PHP_SAPI!=='cli')exit(1);
 $command=$argv[1]??'';
+if($command==='migrate-staging-winback'){
+ if(\Iluma\Gateway\Config::get('APP_ENV')==='production')die("STAGING ONLY\n");
+ $db=Db::get('staging');
+ $sql=file_get_contents(dirname(__DIR__).'/database/migrations/20261110_staging_winback_199.sql');
+ if($sql===false)die("Missing migration\n");
+ $sql=preg_replace('/^\\s*--[^\\r\\n]*$/m','',$sql);
+ foreach(array_filter(array_map('trim',explode(';',$sql))) as $statement){
+  if(preg_match('/^CREATE TABLE IF NOT EXISTS winback_claims/i',$statement))$db->exec($statement);
+ }
+ $app=Db::one(Db::get('registry'),"SELECT id FROM applications WHERE slug='iradiosgr'");
+ if(!$app)die("iRadios application missing in registry\n");
+ $normal=Db::one($db,"SELECT id FROM products
+  WHERE application_id=? AND sku='L-PREM' AND amount_cents=399 AND currency='EUR'",
+  [(int)$app['id']]);
+ if(!$normal)die("L-PREM catalog must be configured at EUR 3.99\n");
+ Db::exec($db,"INSERT INTO products(application_id,sku,title,amount_cents,currency,enabled)
+  VALUES(?, 'L-WINBACK-199', 'Listener Premium — Επιστροφή 1,99 EUR', 199, 'EUR', 1)
+  ON DUPLICATE KEY UPDATE title=VALUES(title),amount_cents=VALUES(amount_cents),
+  currency=VALUES(currency),enabled=1",[(int)$app['id']]);
+ echo "STAGING winback claim schema and L-WINBACK-199 catalog ready (199 cents).\n";
+ echo "No coupons redeemed, no payment or provider call created.\n";
+ exit;
+}
 if($command==='recurring-preview-staging'){
  if(\Iluma\Gateway\Config::get('APP_ENV')==='production')
   die("STAGING ONLY\n");

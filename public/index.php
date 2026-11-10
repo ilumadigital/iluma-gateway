@@ -59,6 +59,16 @@ try {
    $result=Payments::checkout($credential,$body,$headers['idempotency-key']??'');
    Http::respond($result,$result['status']==='redirect'?201:202);
   }
+  // Server-to-server HMAC credentials + account-scoped customer reference.
+  // No browser may call these endpoints or supply a Nexi contract ID.
+  if($method==='POST' && $path==='/api/v1/payment-methods/status'){
+   $external=(string)($body['customer_id']??'');
+   Http::respond(\Iluma\Gateway\SavedCards::publicForCustomer($credential,$external));
+  }
+  if($method==='POST' && $path==='/api/v1/payment-methods/revoke'){
+   $external=(string)($body['customer_id']??'');
+   Http::respond(\Iluma\Gateway\SavedCards::revoke($credential,$external));
+  }
   // Signed, read-only recovery for a lost initial checkout response.
   // Never starts a second provider payment; scoped to the calling application.
   if($method==='GET' && preg_match('#^/api/v1/payments/by-request-key/([A-Za-z0-9._:-]{1,128})$#D',$path,$m)){

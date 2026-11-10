@@ -59,6 +59,9 @@ try {
    $result=Payments::checkout($credential,$body,$headers['idempotency-key']??'');
    Http::respond($result,$result['status']==='redirect'?201:202);
   }
+  if($method==='POST' && $path==='/api/v1/billing/history'){
+   Http::respond(Payments::history($credential,(string)($body['customer_id']??'')));
+  }
   if($method==='POST' && $path==='/api/v1/recurring/status'){
    Http::respond(\Iluma\Gateway\RecurringMandates::status($credential,(string)($body['customer_id']??'')));
   }

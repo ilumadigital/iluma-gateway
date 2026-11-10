@@ -101,6 +101,17 @@ check(str_contains($adminSource,'data-stepup='),'sensitive admin forms use actio
 $nexiSource=file_get_contents(dirname(__DIR__).'/src/NexiClient.php');
 check($nexiSource!==false && str_contains($nexiSource,"if(\$this->environment==='staging')\$session['captureType']='IMPLICIT';"),'Sandbox HPP explicitly requests implicit capture');
 check(str_contains($nexiSource,"'language'=>'ELL'"),'Nexi HPP includes required ISO 639-2 session language');
+$reference='iradios-stage-'.str_repeat('a',24);
+$providerCustomer=NexiClient::providerCustomerId($reference);
+check(strlen($reference)>27,'Application customer reference reproduces XPay customerId overflow');
+check((bool)preg_match('/^[A-Za-z0-9_-]{1,27}$/D',$providerCustomer),'Nexi HPP customerId meets official 27-character format');
+check(NexiClient::providerCustomerId($reference)===$providerCustomer,'Same Gateway customer always maps to same Nexi customerId');
+check(NexiClient::providerCustomerId('iradios-stage-'.str_repeat('b',24))!==$providerCustomer,'Different customers cannot accidentally reuse the same test customerId');
+check(NexiClient::providerCustomerId('listener-002')!=='','Gateway CLI pilot uses same compliant mapper');
+check(str_contains($nexiSource,"'customerId'=>self::providerCustomerId(\$customerRef)"),'All standard HPP calls convert the Gateway customer reference to provider format');
+try{NexiClient::providerCustomerId('');$invalidCustomerAccepted=true;}catch(\InvalidArgumentException){$invalidCustomerAccepted=false;}
+check(!$invalidCustomerAccepted,'Empty Nexi customer reference is refused');
+
 check(\Iluma\Gateway\SubscriptionPilot::reference('listener-001')==='listener-001','Staging subscription test reference');
 try{\Iluma\Gateway\SubscriptionPilot::reference('../bad');$bad=false;}catch(\InvalidArgumentException){$bad=true;}
 check($bad,'Staging subscription rejects unsafe reference');

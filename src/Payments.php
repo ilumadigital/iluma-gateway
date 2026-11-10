@@ -41,9 +41,16 @@ final class Payments {
    Db::exec($db,"UPDATE payments SET status='redirect',hosted_page=?,security_token_box=? WHERE id=? AND status='pending'",[$page,Security::encrypt($token),$pid]);
    self::log($db,$pid,'redirect','Δημιουργήθηκε ασφαλής σελίδα πληρωμής Nexi.');
   } catch(\Throwable $e){
-   error_log('ILUMA initial checkout uncertain: '.$e->getMessage());
+   // Persist only the HTTP status class in the operator-visible audit trail.
+   // Detailed, already scrubbed validation/correlation data stays in private
+   // server logs. Never expose a provider response, token or API key in admin.
+   error_log('ILUMA HPP initialization failed for order '.$order.': '.$e->getMessage());
    Db::exec($db,"UPDATE payments SET status='unknown' WHERE id=? AND status='pending'",[$pid]);
-   self::log($db,$pid,'unknown','Αναμονή επιβεβαίωσης από Nexi.');
+   $reason='Δεν δημιουργήθηκε επιβεβαιωμένο Nexi checkout. Χρειάζεται διασταύρωση.';
+   if(preg_match('/^Nexi status ([45][0-9]{2})\b/',$e->getMessage(),$matches)){
+    $reason='Η Nexi απέρριψε τη δημιουργία checkout (HTTP '.$matches[1].'). Ελέγξτε το αίτημα και τα ιδιωτικά server logs.';
+   }
+   self::log($db,$pid,'unknown',$reason);
   }
   $p=Db::one($db,'SELECT * FROM payments WHERE id=?',[$pid]);return self::publicPayment($p);
  }

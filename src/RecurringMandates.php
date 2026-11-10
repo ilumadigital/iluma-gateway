@@ -89,6 +89,7 @@ final class RecurringMandates {
    'paid_through_at'=>!empty($row['paid_through_at'])?str_replace(' ','T',$row['paid_through_at']).'Z':null,
    'cancelled_at'=>!empty($row['cancelled_at'])?str_replace(' ','T',$row['cancelled_at']).'Z':null,
    'execution_enabled'=>Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'
+      && Config::get('MIT_SANDBOX_UAT_APPROVED')==='1'
       && Config::get('APP_ENV')==='staging'
   ];
  }

@@ -18,9 +18,12 @@ final class Payments {
   if(isset($request['amount_cents']) && (int)$request['amount_cents']!==(int)$product['amount_cents'])throw new HttpError(422,'Price mismatch');
   if(isset($request['currency']) && $request['currency']!=='EUR')throw new HttpError(422,'Unsupported currency');
   $choice=SavedCards::choice($request,$env,$sku,(string)$credential['slug']);
+  $recurring=RecurringMandates::choice($request,$env,$sku,(string)$credential['slug']);
   $canonical=['customer_id'=>$external,'product_sku'=>$sku,'email'=>$email,'name'=>$name];
   if($choice['save']){$canonical['save_card']=true;$canonical['card_consent_version']=$choice['version'];}
   if($choice['reuse'])$canonical['use_saved_card']=true;
+  if($recurring){$canonical['auto_renew']=true;
+    $canonical['recurring_consent_version']=RecurringMandates::CONSENT;}
   $hash=hash('sha256',Security::json($canonical));
   $recurrence=null;
   $db->beginTransaction();
@@ -30,6 +33,7 @@ final class Payments {
    // Preserve idempotency for an already-created payment before validating
    // current stored-card state. New requests fail closed before any payment insert.
    SavedCards::preflight($db,$application,$external,$choice);
+   RecurringMandates::preflight($db,$application,$external,$recurring);
    $customer=Db::one($db,'SELECT id FROM customers WHERE application_id=? AND external_user_id=? FOR UPDATE',[$application,$external]);
    if($customer){$cid=$customer['id'];Db::exec($db,'UPDATE customers SET email=?,name=? WHERE id=?',[$email,$name,$cid]);}
    else { $cid=Security::id();Db::exec($db,'INSERT INTO customers(id,application_id,external_user_id,email,name) VALUES(?,?,?,?,?)',[$cid,$application,$external,$email,$name]); }
@@ -38,6 +42,8 @@ final class Payments {
    if($choice['save']||$choice['reuse'])
     $recurrence=SavedCards::prepare($db,$application,$cid,$pid,
      NexiClient::providerCustomerId($external),$choice);
+   if($recurring)$recurrence=RecurringMandates::prepare(
+     $db,$application,$cid,$pid,NexiClient::providerCustomerId($external));
    self::log($db,$pid,'created','Το iRadios ζήτησε πληρωμή.');$db->commit();
   }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
   // Exactly one initial provider call. No automatic replay after error/timeout.
@@ -116,6 +122,8 @@ final class Payments {
    if($status==='paid'){
     try{SavedCards::verifyPaid($env,$p['id']);}
     catch(\Throwable $e){error_log('Saved-card verification deferred; payment remains paid');}
+    try{RecurringMandates::verifyPaid($env,$p['id']);}
+    catch(\Throwable $e){error_log('MIT contract verification deferred; payment remains paid');}
    }
    return $status;
   }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}

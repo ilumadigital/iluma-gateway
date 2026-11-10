@@ -134,16 +134,25 @@ $project=$base.'/domains/example.test/public_html/site';
 $private=$base.'/domains/example.test/private';
 mkdir($project,0700,true);mkdir($private,0700,true);
 $file=$private.'/iluma-gateway.env';
-file_put_contents($file,"REGISTRY_USER=test_user\nSTAGING_PASSWORD='a=b#c'\n");chmod($file,0600);
+file_put_contents($file,"REGISTRY_USER=test_user\nSTAGING_PASSWORD='a=b#c'\nBROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED=0\nBROADCASTER_MIT_SANDBOX_UAT_APPROVED=0\nMIT_SANDBOX_EXECUTION_ENABLED=0\nMIT_SANDBOX_UAT_APPROVED=0\n");chmod($file,0600);
 putenv('REGISTRY_USER');putenv('STAGING_PASSWORD');
+foreach(['MIT_SANDBOX_EXECUTION_ENABLED','MIT_SANDBOX_UAT_APPROVED',
+ 'BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED','BROADCASTER_MIT_SANDBOX_UAT_APPROVED'] as $flag)putenv($flag);
 check(EnvLoader::privateFilePath($project)===$file,'Hostinger env path outside public_html');
 check(EnvLoader::load($project),'Hostinger private env loaded');
 check(getenv('STAGING_PASSWORD')==='a=b#c','private password special characters');
+check(Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='0'
+ && Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='0'
+ && Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='0'
+ && Config::get('MIT_SANDBOX_UAT_APPROVED')==='0',
+ 'Hostinger private env accepts sandbox MIT flags but execution stays disabled');
 chmod($file,0644);
 try{EnvLoader::load($project);$bad=false;}catch(\RuntimeException){$bad=true;}
 check($bad,'unsafe environment permissions rejected');
 unlink($file);rmdir($private);rmdir($project);rmdir(dirname($project));rmdir(dirname(dirname($project)));rmdir(dirname(dirname(dirname($project))));
 putenv('REGISTRY_USER');putenv('STAGING_PASSWORD');
+foreach(['MIT_SANDBOX_EXECUTION_ENABLED','MIT_SANDBOX_UAT_APPROVED',
+ 'BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED','BROADCASTER_MIT_SANDBOX_UAT_APPROVED'] as $flag)putenv($flag);
 $routing=file_get_contents(dirname(__DIR__).'/.htaccess');
 $adminSource=file_get_contents(dirname(__DIR__).'/public/admin.php');
 check($routing!==false && str_contains($routing,'^ilm-admin/?$ public/admin.php'),'hostinger admin path rewrite');

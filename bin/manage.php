@@ -4,6 +4,60 @@ require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Db,Security};
 if(PHP_SAPI!=='cli')exit(1);
 $command=$argv[1]??'';
+if($command==='recurring-preview-staging'){
+ if(\Iluma\Gateway\Config::get('APP_ENV')==='production')
+  die("STAGING ONLY\n");
+ // This command is deliberately READ ONLY. It has no Nexi client, no UPDATE,
+ // no payment creation, and never changes the scheduler's real system clock.
+ $at=(string)($argv[2]??gmdate('Y-m-d\TH:i:s\Z'));
+ $dt=\DateTimeImmutable::createFromFormat('!Y-m-d\TH:i:s\Z',$at,
+  new \DateTimeZone('UTC'));
+ if(!$dt||$dt->format('Y-m-d\TH:i:s\Z')!==$at)
+  die("Usage: php bin/manage.php recurring-preview-staging YYYY-MM-DDTHH:MM:SSZ [email]\n");
+ if(abs($dt->getTimestamp()-time())>366*86400)die("Preview date outside 1 year\n");
+ $email=(string)($argv[3]??'');
+ if($email!==''&&!filter_var($email,FILTER_VALIDATE_EMAIL))die("Invalid email filter\n");
+ $db=Db::get('staging');
+ $sql="SELECT m.status,m.verified_at,m.next_due_at,m.paid_through_at,
+   m.amount_cents,m.contract_type,m.cancelled_at,
+   c.email,
+   (SELECT MAX(px.confirmed_at) FROM payments px WHERE px.status='paid'
+     AND (px.id=m.initial_payment_id OR
+      px.id IN (SELECT cy.payment_id FROM recurring_cycles cy
+       WHERE cy.mandate_id=m.id))) AS last_paid_at
+   FROM recurring_mandates m
+   JOIN customers c ON c.id=m.customer_id";
+ $args=[];
+ if($email!==''){$sql.=" WHERE c.email=?";$args=[$email];}
+ $sql.=" ORDER BY m.created_at DESC LIMIT 25";
+ $rows=Db::all($db,$sql,$args);
+ $asOf=$dt->getTimestamp();
+ echo "READ-ONLY MIT PREVIEW (NO CHARGE): ".$at."\n";
+ $enabled=\Iluma\Gateway\Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1' &&
+  \Iluma\Gateway\Config::get('MIT_SANDBOX_UAT_APPROVED')==='1';
+ echo "SANDBOX EXECUTION: ".($enabled?'APPROVED':'LOCKED')."\n";
+ foreach($rows as $r){
+  $next=$r['next_due_at']?strtotime($r['next_due_at'].' UTC'):null;
+  $paid=$r['last_paid_at']?strtotime($r['last_paid_at'].' UTC'):null;
+  $earliest=$paid!==null?$paid+28*86400:null;
+  $paidThrough=$r['paid_through_at']?strtotime($r['paid_through_at'].' UTC'):null;
+  $due=$r['status']==='active'&&$r['verified_at']!==null&&
+    $r['cancelled_at']===null&&$next!==null&&$next<=$asOf&&
+    $paidThrough!==null&&$next===$paidThrough;
+  $spacing=$earliest!==null&&$asOf>=$earliest;
+  echo "ACCOUNT: ".$r['email']."\n";
+  echo "MIT STATE: ".$r['status']."\n";
+  echo "NEXT DUE UTC: ".($r['next_due_at']??'—')."\n";
+  echo "PROVIDER EARLIEST (28 days): ".($earliest?gmdate('Y-m-d H:i:s',$earliest).' UTC':'unknown')."\n";
+  echo "SCHEDULE DUE IN VIRTUAL CLOCK: ".($due?'YES':'NO')."\n";
+  echo "PROVIDER MIN-SPACING IN VIRTUAL CLOCK: ".($spacing?'SATISFIED':'NOT YET')."\n";
+  echo "WOULD BE ELIGIBLE IF SANDBOX CHARGES WERE ENABLED: ".
+   ($due&&$spacing?'YES':'NO')."\n";
+  echo "CHARGES EXECUTED BY THIS COMMAND: ZERO\n";
+ }
+ if(!$rows)echo "NO MATCHING MANDATES\n";
+ exit;
+}
 if($command==='recurring-doctor-staging'){
  if(\Iluma\Gateway\Config::get('APP_ENV')==='production')die("STAGING ONLY\n");
  $db=Db::get('staging');

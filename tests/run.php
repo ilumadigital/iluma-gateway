@@ -323,4 +323,38 @@ check(str_contains($paymentSource,"strtotime((string)$" . "p['created_at'].' UTC
 check(str_contains($paymentSource,"status='cancelled',cancelled_at=UTC_TIMESTAMP()") &&
  str_contains($paymentSource,"last_error_code='HPP_REJECTED_400'"),
  'Rejected pending MIT agreement is disabled only after documented safe provider reconciliation');
+
+check(\Iluma\Gateway\RecurringMandates::hasProviderSpacing(
+  '2026-11-10 18:20:00','2026-12-08 18:20:00'),
+ 'MIT spacing is satisfied exactly 28 full days after capture');
+check(!\Iluma\Gateway\RecurringMandates::hasProviderSpacing(
+  '2026-11-10 18:20:00','2026-11-10 20:20:00') &&
+ !\Iluma\Gateway\RecurringMandates::hasProviderSpacing(
+  '2026-11-10 18:20:00','2026-12-08 18:19:59'),
+ 'Backdating renewal due cannot trigger an early scheduled MIT debit');
+$adminSource=file_get_contents(dirname(__DIR__).'/public/admin.php');
+$subscriptionView=file_get_contents(dirname(__DIR__).'/src/RecurringAdmin.php');
+check(str_contains($adminSource,'RecurringAdmin::index(') &&
+ str_contains($adminSource,'RecurringAdmin::detail(') &&
+ str_contains($subscriptionView,'FROM recurring_mandates m') &&
+ str_contains($subscriptionView,'FROM recurring_cycles cy') &&
+ str_contains($subscriptionView,'JOIN customers c'),
+ 'Gateway subscriptions admin reads actual Nexi MIT mandates and payment cycles');
+check(str_contains($subscriptionView,'ENT_QUOTES|ENT_SUBSTITUTE') &&
+ str_contains($subscriptionView,'substr((string)$m[\'contract_id\'],-6)') &&
+ !str_contains($subscriptionView,'NexiClient::'),
+ 'Admin escapes customer data, masks Nexi contract IDs and never calls provider');
+$managementSource=file_get_contents(dirname(__DIR__).'/bin/manage.php');
+$previewStart=strpos($managementSource,"if(\$command==='recurring-preview-staging')");
+$previewEnd=strpos($managementSource,"if(\$command==='recurring-doctor-staging')");
+check($previewStart!==false && $previewEnd!==false && $previewEnd>$previewStart,
+ 'Read-only future-date MIT staging preview CLI exists');
+$preview=substr($managementSource,$previewStart,$previewEnd-$previewStart);
+check(str_contains($preview,'READ-ONLY MIT PREVIEW (NO CHARGE)') &&
+ str_contains($preview,'CHARGES EXECUTED BY THIS COMMAND: ZERO') &&
+ !preg_match('/\\b(?:UPDATE|INSERT|DELETE|startMit|chargeDue|->request)\\s*\\(/i',$preview),
+ 'Virtual-time preview performs no DB writes or Nexi POST');
+check(str_contains(file_get_contents(dirname(__DIR__).'/src/RecurringMandates.php'),
+ 'self::hasProviderSpacing('),
+ 'Scheduler enforces provider minimum spacing independently of admin virtual time');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

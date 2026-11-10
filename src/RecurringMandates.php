@@ -137,6 +137,14 @@ final class RecurringMandates {
      AND status IN ('pending','verification_pending')",
    [$end,$end,$anchorDay,$m['id']]);
  }
+ /** Nexi MIT_SCHEDULED: at least 28 * 24 hours between captured payments. */
+ public static function hasProviderSpacing(string $lastPaidUtc,string $asOfUtc):bool{
+  try{
+   $last=(new \DateTimeImmutable($lastPaidUtc,new \DateTimeZone('UTC')))->getTimestamp();
+   $at=(new \DateTimeImmutable($asOfUtc,new \DateTimeZone('UTC')))->getTimestamp();
+   return $at-$last>=28*86400;
+  }catch(\Throwable){return false;}
+ }
  /** Calendar-month arithmetic with correct February/31st clamping in UTC. */
  public static function monthAfter(string $value,?int $anchorDay=null):string {
   $d=new \DateTimeImmutable($value,new \DateTimeZone('UTC'));
@@ -171,7 +179,20 @@ final class RecurringMandates {
      WHERE m.id=? FOR UPDATE",[$mandateId]);
     if(!$mandate||$mandate['status']!=='active'||$mandate['cancelled_at']!==null||
        !$mandate['verified_at']||!$mandate['next_due_at']||
+       !$mandate['paid_through_at']||
+       $mandate['next_due_at']!==$mandate['paid_through_at']||
        strtotime($mandate['next_due_at'].' UTC')>time()){$db->rollBack();continue;}
+    // The provider's MIT_SCHEDULED contract was issued with frequency=28.
+    // Never issue an early POST even if an operator backdates next_due_at.
+    // This is an independent financial gate, not a UI/preview convention.
+    $lastPaid=Db::one($db,"SELECT MAX(confirmed_at) AS last_paid
+      FROM payments WHERE status='paid' AND
+      (id=? OR id IN (SELECT payment_id FROM recurring_cycles WHERE mandate_id=?))",
+      [$mandate['initial_payment_id'],$mandateId]);
+    if(!$lastPaid||!$lastPaid['last_paid']||
+       !self::hasProviderSpacing((string)$lastPaid['last_paid'],gmdate('Y-m-d H:i:s'))){
+     $db->rollBack();continue;
+    }
     $existing=Db::one($db,'SELECT id FROM recurring_cycles WHERE mandate_id=? AND cycle_due_at=? FOR UPDATE',
        [$mandateId,$mandate['next_due_at']]);
     if($existing){$db->rollBack();continue;}

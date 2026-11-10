@@ -102,3 +102,62 @@ The worker:
 iRadios serves payment history through account-scoped HMAC Gateway lookup,
 not user-controlled Gateway IDs. The Invoices tab intentionally remains
 empty: no fabricated invoice, PDF or tax receipt exists yet.
+
+
+## Gateway Admin: MIT subscriptions and safe future-date expiry preview
+
+Previously, the Admin **Συνδρομές** page only read the legacy
+`subscriptions` SQL table, while Nexi recurring subscriptions live in
+`recurring_mandates`. The new staging admin now lists:
+
+- Subscriber (customer email/name), owning application, plan and monthly VAT
+  inclusive price; verified MIT state, paid-through UTC timestamp displayed
+  in Athens time and next scheduled charge.
+- MIT detail page with masked provider contract ID, consent and verification
+  timestamps, cancellation state, initial HPP order and each signed recurring
+  payment cycle with direct links to financial history.
+- Dashboard Nexi MIT counts **separate** from legacy subscription counts.
+- No production recurring admin data, card details, provider API calls or
+  automatic charges performed by admin reads.
+
+A customer having a paid Nexi HPP order and active `MIT_SCHEDULED`
+contract will appear at
+`https://gateway.iluma.gr/ilm-admin/?p=subscriptions`
+when STAGING is selected. The first payment belongs to the initial HPP
+and therefore recurring_cycles may remain empty until the first automatic
+renewal.
+
+### Read-only rehearsal for a 10 Dec 2026 renewal
+
+Once deployed in the Gateway Hostinger project root:
+
+```bash
+/opt/alt/php84/usr/bin/php bin/manage.php recurring-doctor-staging
+/opt/alt/php84/usr/bin/php bin/manage.php recurring-preview-staging 2026-12-10T18:21:00Z test@iluma.gr
+```
+
+Athens local time is UTC+02:00 in December, so 18:21Z = 20:21
+Athens. Always take actual `next_due_at` from the admin; replace the
+preview date if the particular sandbox account has a different cycle.
+
+Preview **only runs SQL SELECT**. It prints whether the as-of clock has
+reached the due date and at least 28 days since initial captured payment.
+It never creates payments, changes entitlement dates, alters the provider
+mandate, activates either financial feature flag or contacts Nexi.
+
+Do not run arbitrary UPDATEs against `paid_through_at` or `next_due_at`
+to force a real second charge. The live MIT_SCHEDULED provider contract
+requires `contractFrequency=28` days. A database date adjustment cannot
+override the Nexi contract and may cause rejection or an accidental
+duplicate charge. The scheduler independently checks:
+- Verified active mandate without cancellation
+- Actual current time beyond next due, with next due matching paid through
+- At least 28 full days from the latest *captured* paid transaction
+- Unique ledger reservation per (mandate, original due date)
+- BOTH staging UAT/charge flags enabled after external approval
+
+With either flag set to 0, the real worker will not charge anything, even
+after the actual expiry. This is intentional safety gating until a real
+controlled Nexi MIT capture, signed iRadios webhook, idempotency and
+cancellation test are confirmed. Do not claim that a virtual-date preview
+proves successful automatic Nexi charging.

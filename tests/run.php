@@ -121,7 +121,7 @@ check(str_contains($paymentsSource,'function findByRequestKey(') &&
  str_contains($paymentsSource,'WHERE application_id=? AND request_key=?') &&
  !str_contains(substr($paymentsSource,strpos($paymentsSource,'function findByRequestKey('),500),'startCheckout('),
  'Signed recovery uses scoped SELECT and never creates provider checkout');
-check(str_contains($routerSource,"Payments::findByRequestKey($credential,") &&
+check(str_contains($routerSource,'Payments::findByRequestKey($credential,') &&
  str_contains($routerSource,"/api/v1/payments/by-request-key/"),
  'Recovery route uses the already authenticated gateway credential');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

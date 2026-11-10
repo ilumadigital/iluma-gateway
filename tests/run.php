@@ -48,6 +48,21 @@ check(\Iluma\Gateway\CheckoutReturn::url('staging','/checkout/result','IL'.str_r
 check(\Iluma\Gateway\CheckoutReturn::url('staging','/checkout/result','IL'.str_repeat('A',24),'B-PREM')===
  'https://stage.iradios.gr/backoffice/pro-features?gateway_return=result&order=IL'.str_repeat('A',24),
  'Broadcaster subscription HPP return targets Pro Features');
+check(\Iluma\Gateway\RecurringMandates::monthAfter('2027-02-28 15:04:05',31)==='2027-03-31 15:04:05',
+ 'MIT renewals preserve January 31 billing anchor after February');
+check(\Iluma\Gateway\RecurringMandates::monthAfter('2028-02-29 15:04:05',31)==='2028-03-31 15:04:05',
+ 'MIT renewals preserve original day across leap February');
+$bmSource=file_get_contents(dirname(__DIR__).'/src/BroadcasterMandates.php');
+$paySource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
+check($bmSource!==false&&$paySource!==false&&
+ str_contains($bmSource,'function markInitialFailed(')&&
+ str_contains($paySource,'BroadcasterMandates::markInitialFailed($db,$p[\'id\'])')&&
+ str_contains($bmSource,"status IN ('pending','verification_pending')"),
+ 'Provider-confirmed failed initial HPP releases only pending broadcaster MIT mandates');
+check(str_contains($bmSource,'period_ends_at')&&str_contains($bmSource,'anchor_day')&&
+ str_contains($paySource,"$"."body['period_ends_at']=$"."bScope['period_ends_at']"),
+ 'Signed MIT outbox contains immutable original anchor and next expiry');
+
 if($originalAppEnv===false)putenv('APP_ENV');else putenv('APP_ENV='.$originalAppEnv);
 
 $valid=['orderStatus'=>['order'=>['orderId'=>'ILABC','amount'=>'499','currency'=>'EUR'],'capturedAmount'=>'499'], 'operations'=>[['orderId'=>'ILABC','operationId'=>'O123','operationType'=>'CAPTURE','operationAmount'=>'499','operationCurrency'=>'EUR','operationResult'=>'EXECUTED']]];

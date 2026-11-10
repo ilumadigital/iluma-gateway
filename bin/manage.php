@@ -50,8 +50,9 @@ if($command==='doctor-http'){
  });
  foreach($checks as $label=>$result)echo $label.': '.$result."\n";
  echo "DOCTOR: READ-ONLY; NO NEXI CALLS OR CHARGES\n";
- exit(in_array('FAILED',$checks,true)?2:
-   in_array('NOT_READY',$checks,true)?1:0);
+ $exitCode=in_array('FAILED',$checks,true)?2:
+   (in_array('NOT_READY',$checks,true)?1:0);
+ exit($exitCode);
 }
 if($command==='audit-staging-broadcaster'){
  // Read-only readiness check. No HPP/MIT POST, no customer data, no secrets.

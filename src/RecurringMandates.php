@@ -17,7 +17,7 @@ final class RecurringMandates {
   if($enable&&$version!==self::CONSENT)
    throw new HttpError(422,'EXPLICIT_RECURRING_CONSENT_REQUIRED');
   if(!$enable && $version!==null)throw new HttpError(422,'INVALID_RECURRING_CONSENT');
-  if($enable&&($env!=='staging'||$sku!=='L-PREM'||$slug!=='iradiosgr'))
+  if($enable&&($env!=='staging'||!in_array($sku,['L-PREM',Winback::SKU],true)||$slug!=='iradiosgr'))
    throw new HttpError(403,'RECURRING_STAGING_ONLY');
   if($enable&&(!empty($body['save_card'])||!empty($body['use_saved_card'])))
    throw new HttpError(422,'CANNOT_COMBINE_CIT_AND_MIT');

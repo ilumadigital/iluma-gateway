@@ -171,4 +171,51 @@ check(str_contains($adminSource,'Τελευταίο HTTP webhook:') &&
  str_contains($adminSource,'Δεν έχει πραγματοποιηθεί αποστολή προς το iRadios'),
  'Admin exposes redacted pending delivery and last HTTP status for diagnosis');
 
+
+$choice=\Iluma\Gateway\SavedCards::choice([
+ 'save_card'=>true,'card_consent_version'=>\Iluma\Gateway\SavedCards::CONSENT_VERSION
+ ],'staging','L-PREM','iradiosgr');
+check($choice['save']===true && $choice['reuse']===false,'Stored-card opt-in requires explicit consent version');
+$plain=\Iluma\Gateway\SavedCards::choice([],'staging','L-PREM','iradiosgr');
+check($plain['save']===false && $plain['reuse']===false,'No card tokenization by default');
+$reuse=\Iluma\Gateway\SavedCards::choice(['use_saved_card'=>true],'staging','L-PREM','iradiosgr');
+check($reuse['reuse']===true,'Subsequent CIT requires explicit one-click selection');
+foreach([
+ ['save_card'=>true],
+ ['save_card'=>true,'use_saved_card'=>true,'card_consent_version'=>\Iluma\Gateway\SavedCards::CONSENT_VERSION],
+ ['save_card'=>'yes','card_consent_version'=>\Iluma\Gateway\SavedCards::CONSENT_VERSION]
+] as $invalid){
+ try{\Iluma\Gateway\SavedCards::choice($invalid,'staging','L-PREM','iradiosgr');$accepted=true;}
+ catch(\Iluma\Gateway\HttpError){$accepted=false;}
+ check(!$accepted,'Invalid or ambiguous stored-card consent rejected');
+}
+try{\Iluma\Gateway\SavedCards::choice([
+ 'save_card'=>true,'card_consent_version'=>\Iluma\Gateway\SavedCards::CONSENT_VERSION
+ ],'production','L-PREM','iradiosgr');$prodAllowed=true;}
+catch(\Iluma\Gateway\HttpError){$prodAllowed=false;}
+check(!$prodAllowed,'Provider tokenization locked in production');
+$contract=\Iluma\Gateway\SavedCards::contractId();
+check((bool)preg_match('/^ILC[A-F0-9]{24}$/D',$contract),'No PAN data; contract ID is safe and unique shaped');
+$first=NexiClient::oneClickRecurrence('CONTRACT_CREATION',$contract);
+$repeat=NexiClient::oneClickRecurrence('SUBSEQUENT_PAYMENT',$contract);
+check($first['contractType']==='CIT' && $first['action']==='CONTRACT_CREATION',
+ 'First opt-in HPP creates CIT contract only');
+check($repeat['contractType']==='CIT' && $repeat['action']==='SUBSEQUENT_PAYMENT',
+ 'Saved-card manual renewal requests Nexi 3DS again');
+try{NexiClient::oneClickRecurrence('MIT_SCHEDULED',$contract);$mitAllowed=true;}
+catch(\InvalidArgumentException){$mitAllowed=false;}
+check(!$mitAllowed,'Automatic merchant-initiated charge remains unsupported');
+$cardsSource=file_get_contents(dirname(__DIR__).'/src/SavedCards.php');
+check(str_contains($cardsSource,"p.status='paid'") &&
+ str_contains($cardsSource,"(\$contract['contractType']??null)==='CIT'"), 'Card contract is verified only after paid provider settlement');
+check(str_contains($cardsSource,'revocation_pending') &&
+ str_contains($cardsSource,'deactivateContract(') &&
+ !str_contains($cardsSource,'POST /orders/mit'),'Card removal is server-side, no auto charges');
+check(str_contains($routerSource,"/api/v1/payment-methods/status") &&
+ str_contains($routerSource,"/api/v1/payment-methods/revoke"),
+ 'Authenticated Gateway card status and revoke endpoints exist');
+$cardMigration=file_get_contents(dirname(__DIR__).'/database/migrations/20261110_staging_saved_cards.sql');
+check(str_contains($cardMigration,'CREATE TABLE IF NOT EXISTS saved_card_agreements') &&
+ !preg_match('/\\b(?:card_number|security_code)\\s+(?:VARCHAR|TEXT|CHAR)\\b/i',$cardMigration),
+ 'SQL schema stores provider contracts and consent, never raw card details');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

@@ -25,6 +25,8 @@ final class NexiClient {
     ($summary!==''?' ['.$summary.']':'').
     ' (correlation '.$correlation.'; check provider state before retry)');
   }
+  if(trim((string)$response)==='' && $method==='POST' &&
+     str_ends_with($route,'/deactivation'))return ['deactivated'=>true];
   $decoded=json_decode((string)$response,true);
   if(!is_array($decoded)) throw new \RuntimeException('Invalid Nexi response');return $decoded;
  }
@@ -70,6 +72,12 @@ final class NexiClient {
   if($customerRef==='' || strlen($customerRef)>190)throw new \InvalidArgumentException('Invalid customer reference');
   return 'IR'.strtoupper(substr(hash('sha256',$customerRef),0,24));
  }
+ public static function oneClickRecurrence(string $action,string $contractId):array {
+  if(!in_array($action,['CONTRACT_CREATION','SUBSEQUENT_PAYMENT'],true) ||
+     !preg_match('/^ILC[A-F0-9]{24}$/D',$contractId))
+   throw new \InvalidArgumentException('Invalid OneClick contract');
+  return ['action'=>$action,'contractId'=>$contractId,'contractType'=>'CIT'];
+ }
  public function startCheckout(string $orderId,int $amount,string $customerRef,?array $recurrence=null): array {
   $session=['actionType'=>'PAY','amount'=>(string)$amount,'paymentService'=>'CARDS',
    // Required by XPay Greece POST /orders/hpp (ISO 639-2); without it the
@@ -83,6 +91,11 @@ final class NexiClient {
   if($this->environment==='staging')$session['captureType']='IMPLICIT';
   if($recurrence!==null) $session['recurrence']=$recurrence;
   return $this->request('POST','/api/v1/orders/hpp',['order'=>['orderId'=>$orderId,'amount'=>(string)$amount,'currency'=>'EUR','customerId'=>self::providerCustomerId($customerRef)],'paymentSession'=>$session]);
+ }
+ public function deactivateContract(string $contractId):array {
+  if(!preg_match('/^ILC[A-F0-9]{24}$/D',$contractId))
+   throw new \InvalidArgumentException('Invalid provider contract');
+  return $this->request('POST','/api/v1/contracts/'.$contractId.'/deactivation');
  }
  public function contractsForCustomer(string $customerId):array {
   if(!preg_match('/^[A-Za-z0-9._-]{1,190}$/D',$customerId))throw new \InvalidArgumentException('Invalid customer id');

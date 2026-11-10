@@ -140,7 +140,18 @@ try {
   foreach(['Payment ID'=>$row['id'],'Nexi Order ID'=>$row['order_id'],'Nexi Operation ID'=>$row['operation_id']??'—','Περιβάλλον'=>$env,'Πελάτης'=>$row['email'],'Προϊόν'=>$row['title'],'Κατάσταση'=>$row['status'],'Ποσό'=>euro((int)$row['amount_cents'])] as $label=>$value)$content.='<p><b>'.html($label).':</b> '.html((string)$value).'</p>';
   $logs=Db::all($db,'SELECT event_type,message_gr,occurred_at FROM payment_logs WHERE payment_id=? ORDER BY occurred_at,id',[$id]);
   $content.='<h2>Χρονολόγιο γεγονότων</h2><ol>';foreach($logs as $entry)$content.='<li><time>'.html(localDate($entry['occurred_at'])).'</time> — '.html($entry['message_gr']).'</li>';$content.='</ol>';
-  $out=Db::all($db,'SELECT status,attempts FROM outgoing_events WHERE payment_id=?',[$id]);foreach($out as $r)$content.='<p>Ενημέρωση iRadios: '.html($r['status']).' (προσπάθειες: '.(int)$r['attempts'].')</p>';
+  $out=Db::all($db,'SELECT o.status,o.attempts,
+    (SELECT d.http_status FROM event_deliveries d WHERE d.event_id=o.id ORDER BY d.id DESC LIMIT 1) AS last_http_status
+    FROM outgoing_events o WHERE o.payment_id=?',[$id]);
+  foreach($out as $delivery){
+   $content.='<p>Ενημέρωση iRadios: '.html($delivery['status']).' (προσπάθειες: '.(int)$delivery['attempts'].')</p>';
+   if($delivery['last_http_status']!==null)
+    $content.='<p>Τελευταίο HTTP webhook: '.(int)$delivery['last_http_status'].'</p>';
+   if($delivery['status']==='pending' && (int)$delivery['attempts']===0)
+    $content.='<p class="alert">Δεν έχει πραγματοποιηθεί αποστολή προς το iRadios. Ελέγξτε τον staging worker / cron στο Gateway. ΜΗ δημιουργήσετε νέα πληρωμή.</p>';
+   elseif($delivery['status']==='pending')
+    $content.='<p class="alert">Η παράδοση απέτυχε. Ελέγξτε το HTTP status, τα gateway worker logs και την πρόσβαση του /api/gateway/webhook από Cloudflare.</p>';
+  }
  } elseif($p==='customers'){
   $rows=Db::all($db,'SELECT c.id,c.email,c.name,c.external_user_id,COUNT(p.id) payments FROM customers c LEFT JOIN payments p ON p.customer_id=c.id GROUP BY c.id ORDER BY c.created_at DESC LIMIT 100');
   $content.='<table><tr><th>Όνομα</th><th>Email</th><th>External User ID</th><th>Πληρωμές</th></tr>';

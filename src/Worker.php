@@ -8,11 +8,27 @@ final class Worker {
   $orders=Db::all($db,"SELECT order_id FROM payments WHERE status IN ('unknown','redirect','pending') AND created_at < DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 MINUTE) ORDER BY created_at LIMIT ".max(1,min($limit,100)));
   foreach($orders as $row){try {Payments::reconcile($env,$row['order_id']);}catch(\Throwable $e){error_log('Reconcile error: '.$e->getMessage());}}
  }
- public static function deliver(string $env,int $limit=30):void{
+ /**
+  * Best-effort, idempotent delivery for ONE existing paid payment.
+  * Invoked only after read-only Nexi reconciliation; no checkout or second
+  * provider charge is ever created. The normal cron queue remains essential
+  * for delayed delivery, retries and network failure recovery.
+  */
+ public static function deliverPayment(string $env,string $paymentId):void {
+  if(!preg_match('/^[a-f0-9]{32}$/D',$paymentId))
+   throw new \InvalidArgumentException('Invalid payment reference');
+  self::deliver($env,1,$paymentId);
+ }
+ public static function deliver(string $env,int $limit=30,?string $paymentId=null):void{
+  if($paymentId!==null&&!preg_match('/^[a-f0-9]{32}$/D',$paymentId))
+   throw new \InvalidArgumentException('Invalid payment reference');
   $db=Db::get($env);
-  // Recover workers that crashed after claiming a delivery.
-  Db::exec($db,"UPDATE outgoing_events SET status='pending' WHERE status='sending' AND next_attempt_at<=UTC_TIMESTAMP()");
-  $records=Db::all($db,"SELECT * FROM outgoing_events WHERE status='pending' AND next_attempt_at<=UTC_TIMESTAMP() ORDER BY created_at LIMIT ".max(1,min($limit,100)));
+  // Recover workers that crashed after claiming a delivery. Scope recovery
+  // to this payment when sending synchronously on a verified return.
+  $extra=$paymentId!==null?' AND payment_id=?':'';
+  $params=$paymentId!==null?[$paymentId]:[];
+  Db::exec($db,"UPDATE outgoing_events SET status='pending' WHERE status='sending' AND next_attempt_at<=UTC_TIMESTAMP()".$extra,$params);
+  $records=Db::all($db,"SELECT * FROM outgoing_events WHERE status='pending' AND next_attempt_at<=UTC_TIMESTAMP()".$extra." ORDER BY created_at LIMIT ".max(1,min($limit,100)),$params);
   foreach($records as $event){
    // Atomic claim for multi-worker execution.
    if(!Db::exec($db,"UPDATE outgoing_events SET status='sending',next_attempt_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 2 MINUTE) WHERE id=? AND status='pending'",[$event['id']]))continue;

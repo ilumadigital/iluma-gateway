@@ -148,4 +148,27 @@ check(str_contains($paymentsSource,'function findByRequestKey(') &&
 check(str_contains($routerSource,'Payments::findByRequestKey($credential,') &&
  str_contains($routerSource,"/api/v1/payments/by-request-key/"),
  'Recovery route uses the already authenticated gateway credential');
+
+$workerSource=file_get_contents(dirname(__DIR__).'/src/Worker.php');
+check($workerSource!==false && str_contains($workerSource,'function deliverPayment(') &&
+ str_contains($workerSource,'self::deliver($env,1,$paymentId)'),
+ 'Verified paid events use targeted immediate delivery through the durable outbox');
+check(str_contains($routerSource,"if(\$state==='paid')") &&
+ str_contains($routerSource,'Worker::deliverPayment($env,') &&
+ str_contains($routerSource,'Worker::deliverPayment($foundEnv,$foundPaymentId)'),
+ 'Both provider notification and verified return dispatch the existing paid event');
+check(str_contains($workerSource,'AND payment_id=?') &&
+ str_contains($workerSource,'AND next_attempt_at<=UTC_TIMESTAMP()') &&
+ str_contains($workerSource,"status='sending'"),
+ 'Immediate delivery uses existing idempotent, due-time, atomic outbox claim');
+try{
+ \Iluma\Gateway\Worker::deliverPayment('staging','not-valid-id');
+ $invalidDeliveryAllowed=true;
+}catch(\InvalidArgumentException){$invalidDeliveryAllowed=false;}
+check(!$invalidDeliveryAllowed,'Targeted webhook delivery rejects invalid payment ID before database access');
+$adminSource=file_get_contents(dirname(__DIR__).'/public/admin.php');
+check(str_contains($adminSource,'Τελευταίο HTTP webhook:') &&
+ str_contains($adminSource,'Δεν έχει πραγματοποιηθεί αποστολή προς το iRadios'),
+ 'Admin exposes redacted pending delivery and last HTTP status for diagnosis');
+
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

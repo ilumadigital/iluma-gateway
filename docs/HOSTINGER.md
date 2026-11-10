@@ -181,3 +181,54 @@ existing observed order; it will update the Staging database and queue an
 iRadios event only if the provider still confirms a captured payment. The
 iRadios event delivery worker must be configured and verified separately.
 Never manually update the payment status in the database.
+
+
+## Critical: staging payment delivery to iRadios (worker / cron)
+
+**Do not create another payment when Gateway says `paid` but its outgoing
+iRadios event is `pending`.** The existing signed `payment.paid` event must
+be delivered to the matching MongoDB BillingOrder.
+
+To process the existing staging outbox once, from the deployed **Gateway**
+project directory (not the iRadios server):
+
+```bash
+cd "$HOME/domains/gateway.iluma.gr/public_html"
+/opt/alt/php84/usr/bin/php bin/work.php staging
+```
+
+Adapt the directory or PHP 8.4 executable if the Hostinger account differs.
+This call does not create a payment or touch production; it reconciles existing
+orders and attempts authenticated delivery of queued events. Refresh the
+existing payment details in Gateway admin after execution:
+
+- `delivered`, HTTP 2xx: iRadios acknowledged the event. Refresh the
+  existing iRadios Premium page or re-login to update the account.
+- `pending`, attempts `0`: worker did not reach this event. Check that the
+  PHP CLI executes successfully, has the private env, and cron is installed.
+- `pending`, attempts `>0`, HTTP `401`: check matching staging HMAC secret,
+  not payment prices or cards. Disable superseded API credentials only after
+  validating the intended active secret.
+- HTTP `403` or `503`: check Cloudflare/Nginx protection or iRadios
+  webhook correlation respectively. Never disable signature validation.
+- HTTP `0`: transport/TLS timeout or blocked outbound connection. Review
+  private worker logs; do not print secrets.
+
+A proper Hostinger **cron job** must also run the staging worker **every
+minute**, using a path approved for that account, for example:
+
+```cron
+* * * * * /opt/alt/php84/usr/bin/php /home/ACCOUNT/domains/gateway.iluma.gr/public_html/bin/work.php staging
+```
+
+Configure the command in Hostinger **Cron Jobs** for the Gateway account,
+replacing `ACCOUNT` with the actual hosting account name. Do not create a
+production cron unless separately approved and live is enabled; keep
+`PRODUCTION_ENABLED=0` during sandbox tests. PHP CLI errors should go to
+a private hosting log, not a world-accessible path or response.
+
+Gateway also attempts immediate per-payment delivery after an authenticated
+Nexi notification or a reconciled result/cancel return. The durable outbox
+and scheduled cron are still required for Cloudflare/network retries. Neither
+mechanism initiates a new provider charge or grants account entitlements
+without iRadios' HMAC verification.

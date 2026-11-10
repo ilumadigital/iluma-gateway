@@ -17,8 +17,12 @@ final class Payments {
   if(!$product) throw new HttpError(422,'Unknown product');
   if(isset($request['amount_cents']) && (int)$request['amount_cents']!==(int)$product['amount_cents'])throw new HttpError(422,'Price mismatch');
   if(isset($request['currency']) && $request['currency']!=='EUR')throw new HttpError(422,'Unsupported currency');
+  $choice=SavedCards::choice($request,$env,$sku,(string)$credential['slug']);
   $canonical=['customer_id'=>$external,'product_sku'=>$sku,'email'=>$email,'name'=>$name];
+  if($choice['save']){$canonical['save_card']=true;$canonical['card_consent_version']=$choice['version'];}
+  if($choice['reuse'])$canonical['use_saved_card']=true;
   $hash=hash('sha256',Security::json($canonical));
+  $recurrence=null;
   $db->beginTransaction();
   try{
    $existing=Db::one($db,'SELECT * FROM payments WHERE application_id=? AND request_key=? FOR UPDATE',[$application,$key]);
@@ -28,11 +32,14 @@ final class Payments {
    else { $cid=Security::id();Db::exec($db,'INSERT INTO customers(id,application_id,external_user_id,email,name) VALUES(?,?,?,?,?)',[$cid,$application,$external,$email,$name]); }
    $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
    Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status) VALUES(?,?,?,?,?,?,?,?,'pending')",[$pid,$application,$cid,$product['id'],$order,$key,$hash,$product['amount_cents']]);
+   if($choice['save']||$choice['reuse'])
+    $recurrence=SavedCards::prepare($db,$application,$cid,$pid,
+     NexiClient::providerCustomerId($external),$choice);
    self::log($db,$pid,'created','Το iRadios ζήτησε πληρωμή.');$db->commit();
   }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
   // Exactly one initial provider call. No automatic replay after error/timeout.
   try {
-   $res=NexiClient::forEnvironment($env)->startCheckout($order,(int)$product['amount_cents'],$external);
+   $res=NexiClient::forEnvironment($env)->startCheckout($order,(int)$product['amount_cents'],$external,$recurrence);
    $page=(string)($res['hostedPage']??'');$token=(string)($res['securityToken']??'');
    if(!filter_var($page,FILTER_VALIDATE_URL)||parse_url($page,PHP_URL_SCHEME)!=='https'||$token==='')throw new \RuntimeException('Unexpected provider HPP response');
    // Domain of checkout page must be whitelisted after merchant UAT; never expose an arbitrary URL.
@@ -102,7 +109,12 @@ final class Payments {
     $eventId=Security::id();$body=['event_id'=>$eventId,'event_type'=>'payment.'.$status,'payment_id'=>$p['id'],'order_id'=>$order,'customer_id'=>$p['customer_id'],'amount_cents'=>(int)$p['amount_cents'],'currency'=>'EUR','environment'=>$env,'occurred_at'=>gmdate('c')];
     Db::exec($db,"INSERT IGNORE INTO outgoing_events(id,payment_id,application_id,event_type,body_json) VALUES(?,?,?,?,?)",[$eventId,$p['id'],$p['application_id'],'payment.'.$status,Security::json($body)]);
    }
-   $db->commit();return $status;
+   $db->commit();
+   if($status==='paid'){
+    try{SavedCards::verifyPaid($env,$p['id']);}
+    catch(\Throwable $e){error_log('Saved-card verification deferred; payment remains paid');}
+   }
+   return $status;
   }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
  }
 }

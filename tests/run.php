@@ -397,4 +397,12 @@ check(str_contains($cli,"if(\$command==='migrate-staging-winback')") &&
  str_contains($cli,'L-WINBACK-199') &&
  str_contains($cli,'199'),
  'Staging-only migration installs exactly 199-cent product and claim ledger');
+$mitSource=file_get_contents(dirname(__DIR__).'/src/RecurringMandates.php');
+check(str_contains($mitSource,"sku='L-PREM' AND amount_cents=399") &&
+ str_contains($mitSource,'$regular[\'id\']') &&
+ str_contains($mitSource,'One irreversible provider attempt'),
+ 'After first 199-cent HPP, every MIT renewal uses normal L-PREM at 399 cents');
+check(str_contains($paymentSource,'INITIAL_PAYMENT_FAILED') &&
+ str_contains($paymentSource,"status IN ('pending','verification_pending')"),
+ 'Failed first MIT HPP releases pending consent but not unknown payment attempts');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

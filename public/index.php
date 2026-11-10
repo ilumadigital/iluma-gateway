@@ -59,6 +59,12 @@ try {
    $result=Payments::checkout($credential,$body,$headers['idempotency-key']??'');
    Http::respond($result,$result['status']==='redirect'?201:202);
   }
+  if($method==='POST' && $path==='/api/v1/recurring/status'){
+   Http::respond(\Iluma\Gateway\RecurringMandates::status($credential,(string)($body['customer_id']??'')));
+  }
+  if($method==='POST' && $path==='/api/v1/recurring/cancel'){
+   Http::respond(\Iluma\Gateway\RecurringMandates::cancel($credential,(string)($body['customer_id']??'')));
+  }
   // Server-to-server HMAC credentials + account-scoped customer reference.
   // No browser may call these endpoints or supply a Nexi contract ID.
   if($method==='POST' && $path==='/api/v1/payment-methods/status'){

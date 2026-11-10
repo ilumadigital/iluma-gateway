@@ -4,6 +4,44 @@ require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Db,Security};
 if(PHP_SAPI!=='cli')exit(1);
 $command=$argv[1]??'';
+if($command==='recurring-doctor-staging'){
+ if(\Iluma\Gateway\Config::get('APP_ENV')==='production')die("STAGING ONLY\n");
+ $db=Db::get('staging');
+ $table=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
+   WHERE table_schema=DATABASE() AND table_name='recurring_mandates'");
+ $cycles=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
+   WHERE table_schema=DATABASE() AND table_name='recurring_cycles'");
+ $schema=(int)($table['n']??0)===1&&(int)($cycles['n']??0)===1;
+ $enabled=\Iluma\Gateway\Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1';
+ $approved=\Iluma\Gateway\Config::get('MIT_SANDBOX_UAT_APPROVED')==='1';
+ echo "RECURRING MIT SCHEMA: ".($schema?'READY':'MISSING - run migration')."\n";
+ echo "MIT AUTOMATIC CHARGES: ".($enabled&&$approved?'ENABLED - SANDBOX ONLY':'DISABLED')."\n";
+ echo "SANDBOX UAT APPROVAL: ".($approved?'YES':'NO')."\n";
+ if($schema){
+  $statuses=Db::all($db,'SELECT status,COUNT(*) AS n FROM recurring_mandates GROUP BY status');
+  foreach($statuses as $entry)
+   echo 'MANDATES '.strtoupper((string)$entry['status']).': '.(int)$entry['n']."\n";
+  $due=Db::one($db,"SELECT COUNT(*) AS n FROM recurring_mandates
+    WHERE status='active' AND verified_at IS NOT NULL AND
+    cancelled_at IS NULL AND next_due_at<=UTC_TIMESTAMP()");
+  echo 'DUE MANDATES: '.(int)($due['n']??0)."\n";
+ }
+ echo "Read-only check. No card details or provider contract IDs printed.\n";
+ exit;
+}
+if($command==='migrate-staging-recurring'){
+ if(\Iluma\Gateway\Config::get('APP_ENV')==='production')die("STAGING ONLY\n");
+ $db=Db::get('staging');
+ $sql=file_get_contents(dirname(__DIR__).'/database/migrations/20261110_staging_recurring_mit.sql');
+ if($sql===false)die("Missing migration\n");
+ // Strip SQL line comments before splitting statements (comments may contain
+ // semicolons). Never execute migration fragments as arbitrary SQL.
+ $sql=preg_replace('/^\\s*--[^\\r\\n]*$/m','',$sql);
+ foreach(array_filter(array_map('trim',explode(';',$sql))) as $stmt){
+   if(preg_match('/CREATE TABLE IF NOT EXISTS/i',$stmt))$db->exec($stmt);
+ }
+ echo "STAGING MIT mandate schema ready. No charge started.\n";exit;
+}
 if($command==='oneclick-doctor-staging'){
  if(\Iluma\Gateway\Config::get('APP_ENV')==='production')
   die("Staging diagnostic cannot run in production\n");
@@ -112,4 +150,4 @@ if($command==='product'){
  Db::exec($db,'INSERT INTO products(application_id,sku,title,amount_cents) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title)',[$app['id'],$sku,$sku,$cents]);
  echo "Product registered. Existing prices NEVER auto-changed.\n";exit;
 }
-echo "Commands: oneclick-doctor-staging | migrate-staging-saved-cards | doctor | create-admin email | create-key staging|production | product staging|production sku cents | sandbox-subscription staging test-ref | sandbox-subscription-status staging test-ref\n";
+echo "Commands: recurring-doctor-staging | oneclick-doctor-staging | migrate-staging-saved-cards | doctor | create-admin email | create-key staging|production | product staging|production sku cents | sandbox-subscription staging test-ref | sandbox-subscription-status staging test-ref\n";

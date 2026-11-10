@@ -18,7 +18,12 @@ final class Payments {
   if(isset($request['amount_cents']) && (int)$request['amount_cents']!==(int)$product['amount_cents'])throw new HttpError(422,'Price mismatch');
   if(isset($request['currency']) && $request['currency']!=='EUR')throw new HttpError(422,'Unsupported currency');
   $choice=SavedCards::choice($request,$env,$sku,(string)$credential['slug']);
-  $recurring=RecurringMandates::choice($request,$env,$sku,(string)$credential['slug']);
+  // Broadcaster mandates are isolated from the single-Listener contract.
+  $bSku=BroadcasterMandates::choice($request,$env,$sku,(string)$credential['slug'],(int)$product['amount_cents']);
+  $bResource=$bSku!==null?BroadcasterMandates::resource($sku,$request['resource_id']??null):null;
+  $recurring=$bSku===null
+    ?RecurringMandates::choice($request,$env,$sku,(string)$credential['slug'])
+    :false;
   $winbackExpiredAt=Winback::expiredAt($request,$env,$sku,(string)$credential['slug']);
   if($winbackExpiredAt!==null&&($choice['save']||$choice['reuse']))
    throw new HttpError(422,'WINBACK_CANNOT_COMBINE_CIT');
@@ -27,6 +32,11 @@ final class Payments {
   if($choice['reuse'])$canonical['use_saved_card']=true;
   if($recurring){$canonical['auto_renew']=true;
     $canonical['recurring_consent_version']=RecurringMandates::CONSENT;}
+  if($bSku!==null){
+   $canonical['auto_renew']=true;
+   $canonical['recurring_consent_version']=BroadcasterMandates::CONSENT;
+   $canonical['resource_id']=$bResource;
+  }
   if($winbackExpiredAt!==null)$canonical['winback_expired_at']=$winbackExpiredAt;
   $hash=hash('sha256',Security::json($canonical));
   $recurrence=null;
@@ -50,6 +60,8 @@ final class Payments {
      NexiClient::providerCustomerId($external),$choice);
    if($recurring)$recurrence=RecurringMandates::prepare(
      $db,$application,$cid,$pid,NexiClient::providerCustomerId($external));
+   if($bSku!==null)$recurrence=BroadcasterMandates::prepare(
+     $db,$application,$cid,$pid,$external,$bSku,$bResource,(int)$product['amount_cents']);
    if($winbackExpiredAt!==null)
     Winback::reserve($db,$application,$cid,$pid,$winbackExpiredAt);
    self::log($db,$pid,'created','Το iRadios ζήτησε πληρωμή.');$db->commit();
@@ -234,6 +246,9 @@ final class Payments {
       if($mitCycle)RecurringMandates::settleCycle($db,$p['id'],$status);
      }
     }
+    $bScope=$env==='staging'?BroadcasterMandates::eventScope($db,$p['id']):null;
+    if($bScope&&($bScope['billing_origin']??'')==='automatic_renewal')
+      BroadcasterMandates::settleCycle($db,$p['id'],$status);
     self::log($db,$p['id'],$status,$status==='paid'?'Η Nexi επιβεβαίωσε επιτυχημένη πληρωμή.':($status==='failed'?'Η Nexi απέρριψε την πληρωμή.':'Η συναλλαγή ακυρώθηκε.'));
     Db::exec($db,'INSERT INTO payment_attempts(payment_id,provider_status,operation_id) VALUES(?,?,?)',[$p['id'],$status,$operation]);
     $product=Db::one($db,'SELECT sku FROM products WHERE id=? AND application_id=?',
@@ -241,6 +256,14 @@ final class Payments {
     $eventId=Security::id();$body=['event_id'=>$eventId,'event_type'=>'payment.'.$status,'payment_id'=>$p['id'],'order_id'=>$order,'customer_id'=>$p['customer_id'],'amount_cents'=>(int)$p['amount_cents'],'currency'=>'EUR',
       'product_sku'=>$product['sku']??'',
       'environment'=>$env,'occurred_at'=>gmdate('c')];
+    if($bScope){
+      $body['resource_id']=$bScope['resource_id'];
+      if(isset($bScope['billing_origin'])){
+        $body['billing_origin']='automatic_renewal';
+        $body['external_user_id']=$bScope['external_user_id'];
+        $body['cycle_due_at']=$bScope['cycle_due_at'];
+      }
+    }
     if($mitCycle){
      $body['billing_origin']='automatic_renewal';
      $body['external_user_id']=(string)$mitCycle['external_user_id'];
@@ -254,6 +277,8 @@ final class Payments {
     catch(\Throwable $e){error_log('Saved-card verification deferred; payment remains paid');}
     try{RecurringMandates::verifyPaid($env,$p['id']);}
     catch(\Throwable $e){error_log('MIT contract verification deferred; payment remains paid');}
+    try{BroadcasterMandates::verifyPaid($env,$p['id']);}
+    catch(\Throwable $e){error_log('Broadcaster MIT verification deferred; payment remains paid');}
    }
    return $status;
   }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}

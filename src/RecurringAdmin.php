@@ -43,7 +43,7 @@ final class RecurringAdmin {
  public static function index(PDO $db,PDO $registry,string $query):string{
   if(!self::ready($db))
    return '<p>Δεν υπάρχει η staging migration recurring_mandates.</p>';
-  $search=mb_substr(trim($query),0,150);
+  $search=substr(trim($query),0,150);
   $where=$search!==''?' WHERE (c.email LIKE ? OR c.name LIKE ? OR m.id=?)':'';
   $args=$search!==''?['%'.$search.'%','%'.$search.'%',$search]:[];
   $applications=Db::all($registry,'SELECT id,name FROM applications');

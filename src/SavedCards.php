@@ -53,7 +53,7 @@ final class SavedCards {
    throw new HttpError(422,'SAVED_CARD_NOT_AVAILABLE');
  }
  public static function contractId():string {
-  return 'ILC'.strtoupper(substr(Security::id(16),0,24));
+  return 'ILC'.strtoupper(substr(Security::id(16),0,15));
  }
  // Called within the existing checkout transaction after payment/customer exist.
  public static function prepare(\PDO $db,int $application,string $customer,string $payment,

@@ -4,8 +4,38 @@ require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Db,Security};
 if(PHP_SAPI!=='cli')exit(1);
 $command=$argv[1]??'';
+if($command==='audit-staging-broadcaster'){
+ // Read-only readiness check. No HPP/MIT POST, no customer data, no secrets.
+ if(\Iluma\Gateway\Config::get('APP_ENV')!=='staging')die("STAGING ONLY\n");
+ $db=Db::get('staging');
+ $tables=Db::all($db,"SELECT table_name AS name FROM information_schema.tables
+  WHERE table_schema=DATABASE() AND table_name IN
+   ('broadcaster_mandates','broadcaster_cycles','broadcaster_boost_scopes')");
+ $found=array_column($tables,'name');
+ $missing=[];
+ foreach(['broadcaster_mandates','broadcaster_cycles','broadcaster_boost_scopes'] as $name)
+  if(!in_array($name,$found,true))$missing[]=$name;
+ $app=Db::one(Db::get('registry'),"SELECT id FROM applications WHERE slug='iradiosgr'");
+ if(!$app)$missing[]='registry:iradiosgr';
+ $items=array_merge(\Iluma\Gateway\BroadcasterMandates::PRICE,\Iluma\Gateway\BroadcasterBoost::PRICE);
+ if($app)foreach($items as $sku=>$amount){
+  $row=Db::one($db,"SELECT amount_cents,currency,enabled
+   FROM products WHERE application_id=? AND sku=?",[(int)$app['id'],$sku]);
+  if(!$row||(int)$row['amount_cents']!==$amount||
+     $row['currency']!=='EUR'||(int)$row['enabled']!==1)$missing[]='catalog:'.$sku;
+ }
+ $ready=$missing===[]?'READY':'NOT_READY';
+ echo "BROADCASTER STAGING READINESS: ".$ready."\n";
+ echo "PRODUCTS EXPECTED: ".count($items)."\n";
+ echo "BROADCASTER MIT EXECUTION: ".
+  (\Iluma\Gateway\Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
+   \Iluma\Gateway\Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1'
+    ?'ENABLED BY RUNTIME':'LOCKED (DEFAULT SAFE)')."\n";
+ if($missing)echo "MISSING/INVALID: ".implode(', ',$missing)."\n";
+ exit($missing?1:0);
+}
 if($command==='migrate-staging-broadcaster'){
- if(\Iluma\Gateway\Config::get('APP_ENV')==='production')die("STAGING ONLY\n");
+ if(\Iluma\Gateway\Config::get('APP_ENV')!=='staging')die("STAGING ONLY\n");
  $db=Db::get('staging');
  $file=dirname(__DIR__).'/database/migrations/20261111_broadcaster_recurring.sql';
  $sql=file_get_contents($file);

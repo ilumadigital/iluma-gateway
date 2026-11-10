@@ -187,26 +187,43 @@ final class RecurringMandates {
     if($db->inTransaction())$db->rollBack();
     error_log('MIT reservation failed (no provider attempt)');continue;
    }
-   // If the user cancelled after reservation but before outbound request,
-   // abort without touching the provider; the cancelled mandate stays stopped.
-   $check=Db::one($db,'SELECT status,cancelled_at FROM recurring_mandates WHERE id=?',[$mandateId]);
-   if(!$check||$check['status']!=='active'||$check['cancelled_at']!==null){
-    Db::exec($db,"UPDATE payments SET status='canceled' WHERE id=? AND status='pending'",[$payment['id']]);
-    Db::exec($db,"UPDATE recurring_cycles SET status='cancelled' WHERE payment_id=?",
-      [$payment['id']]);continue;
-   }
-   try{
-    // Provider may have accepted the POST even if transport times out. Do not
-    // repeat it; the worker reconciles this exact immutable order via GET.
-    NexiClient::forEnvironment($env)->startMit(
-     $payment['order'],$mandate['provider_customer_id'],$mandate['contract_id'],399);
-    Payments::log($db,$payment['id'],'mit_submitted','Η Nexi έλαβε το αίτημα ανανέωσης. Αναμονή επιβεβαίωσης.');
+   // Serialize payment initiation with account cancellation. The short
+   // provider request (HTTP timeout 20s) holds the mandate row lock:
+   // cancel() cannot acknowledge a stop while a new MIT POST may still start.
+   // The unique reserved cycle is durable even if PHP crashes in this section.
+   $db->beginTransaction();
+   try {
+    $check=Db::one($db,'SELECT status,cancelled_at FROM recurring_mandates
+       WHERE id=? FOR UPDATE',[$mandateId]);
+    if(!$check||$check['status']!=='active'||$check['cancelled_at']!==null){
+     Db::exec($db,"UPDATE payments SET status='canceled'
+       WHERE id=? AND status='pending'",[$payment['id']]);
+     Db::exec($db,"UPDATE recurring_cycles SET status='cancelled'
+       WHERE payment_id=? AND status='pending'",[$payment['id']]);
+     $db->commit();
+     continue;
+    }
+    try {
+     // A timeout can mean the provider has charged: do not repeat POST.
+     NexiClient::forEnvironment($env)->startMit(
+      $payment['order'],$mandate['provider_customer_id'],$mandate['contract_id'],399);
+     Payments::log($db,$payment['id'],'mit_submitted',
+      'Η Nexi παρέλαβε το αίτημα. Αναμονή επαλήθευσης.');
+    }catch(\Throwable $e){
+     Db::exec($db,"UPDATE payments SET status='unknown'
+       WHERE id=? AND status='pending'",[$payment['id']]);
+     Db::exec($db,"UPDATE recurring_cycles SET status='unknown'
+       WHERE payment_id=? AND status='pending'",[$payment['id']]);
+     Payments::log($db,$payment['id'],'unknown',
+      'Μη επιβεβαιωμένη MIT προσπάθεια. Μόνο GET, χωρίς επανάληψη χρέωσης.');
+     error_log('MIT provider outcome unknown; no repeat POST');
+    }
+    $db->commit();
    }catch(\Throwable $e){
-    Db::exec($db,"UPDATE payments SET status='unknown'
-      WHERE id=? AND status='pending'",[$payment['id']]);
-    Db::exec($db,"UPDATE recurring_cycles SET status='unknown' WHERE payment_id=?",[$payment['id']]);
-    Payments::log($db,$payment['id'],'unknown','Μη επιβεβαιωμένη MIT προσπάθεια. Μόνο provider GET, χωρίς δεύτερη χρέωση.');
-    error_log('MIT outcome requires reconciliation; never re-POST');
+    if($db->inTransaction())$db->rollBack();
+    // The payment was durably reserved before the outbound attempt.
+    // Any failure here must be reconciled by immutable provider order ID.
+    error_log('MIT initiation requires provider reconciliation');
    }
    try{Payments::reconcile($env,$payment['order']);}
    catch(\Throwable $e){error_log('MIT immediate read-only reconciliation pending');}

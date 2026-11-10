@@ -37,3 +37,18 @@ CREATE TABLE IF NOT EXISTS broadcaster_cycles (
  FOREIGN KEY(mandate_id) REFERENCES broadcaster_mandates(id),
  FOREIGN KEY(payment_id) REFERENCES payments(id)
 ) ENGINE=InnoDB;
+
+-- Immutable one-time Boost scope. The signed Gateway paid event must identify
+-- the exact approved station originally linked to this one payment.
+CREATE TABLE IF NOT EXISTS broadcaster_boost_scopes (
+ payment_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ application_id BIGINT UNSIGNED NOT NULL,
+ customer_id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ sku VARCHAR(80) NOT NULL,
+ resource_id CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ amount_cents INT UNSIGNED NOT NULL,
+ created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(payment_id) REFERENCES payments(id),
+ FOREIGN KEY(customer_id) REFERENCES customers(id),
+ INDEX(application_id,customer_id,resource_id,sku)
+) ENGINE=InnoDB;

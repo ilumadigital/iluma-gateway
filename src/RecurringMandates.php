@@ -66,8 +66,17 @@ final class RecurringMandates {
    throw new HttpError(422,'CUSTOMER_SCOPE_INVALID');
   return [Db::get('staging'),(int)$credential['application_id']];
  }
+ private static function schemaReady(\PDO $db):bool {
+  $r=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
+   WHERE table_schema=DATABASE() AND table_name='recurring_mandates'");
+  return (int)($r['n']??0)===1;
+ }
  public static function status(array $credential,string $external):array {
   [$db,$app]=self::credentialCustomer($credential,$external);
+  if(!self::schemaReady($db))return [
+   'state'=>'unavailable','auto_renew'=>false,'amount_cents'=>399,
+   'currency'=>'EUR','interval'=>'calendar_month','next_charge_at'=>null,
+   'paid_through_at'=>null,'cancelled_at'=>null,'execution_enabled'=>false];
   $row=Db::one($db,"SELECT r.status,r.consent_at,r.next_due_at,r.paid_through_at,r.cancelled_at
    FROM recurring_mandates r JOIN customers c ON c.id=r.customer_id
    WHERE r.application_id=? AND c.application_id=? AND c.external_user_id=?
@@ -85,6 +94,7 @@ final class RecurringMandates {
  }
  public static function cancel(array $credential,string $external):array {
   [$db,$app]=self::credentialCustomer($credential,$external);
+  if(!self::schemaReady($db))throw new HttpError(503,'Recurring schema unavailable');
   $db->beginTransaction();
   try{
    $row=Db::one($db,"SELECT r.id FROM recurring_mandates r
@@ -142,6 +152,7 @@ final class RecurringMandates {
      Config::get('MIT_SANDBOX_EXECUTION_ENABLED')!=='1'||
      Config::get('MIT_SANDBOX_UAT_APPROVED')!=='1')return;
   $db=Db::get('staging');
+  if(!self::schemaReady($db))return;
   $rows=Db::all($db,"SELECT id FROM recurring_mandates
    WHERE status='active' AND verified_at IS NOT NULL AND cancelled_at IS NULL
     AND next_due_at<=UTC_TIMESTAMP() ORDER BY next_due_at LIMIT ".max(1,min(5,$limit)));
@@ -224,6 +235,7 @@ final class RecurringMandates {
  }
  public static function pendingVerification(string $env,int $limit=10):void {
   if($env!=='staging')return;
+  if(!self::schemaReady(Db::get($env)))return;
   $rows=Db::all(Db::get($env),"SELECT m.initial_payment_id FROM recurring_mandates m
    JOIN payments p ON p.id=m.initial_payment_id WHERE m.status IN ('pending','verification_pending')
    AND p.status='paid' ORDER BY m.created_at LIMIT ".max(1,min(30,$limit)));
@@ -232,6 +244,7 @@ final class RecurringMandates {
  }
  public static function pendingDeactivation(string $env,int $limit=10):void {
   if($env!=='staging')return;
+  if(!self::schemaReady(Db::get($env)))return;
   $rows=Db::all(Db::get($env),"SELECT id,contract_id FROM recurring_mandates
    WHERE status='cancelled' AND deactivated_at IS NULL
    ORDER BY cancelled_at LIMIT ".max(1,min(30,$limit)));

@@ -263,8 +263,9 @@ check((bool)preg_match('/^ILM[A-F0-9]{24}$/D',$mitContract) &&
  $mitRecurrence['contractFrequency']==='28',
  'Nexi scheduled MIT contract has valid ID and 28-day minimum monthly frequency');
 check(\Iluma\Gateway\RecurringMandates::monthAfter('2026-01-31 15:14:00')==='2026-02-28 15:14:00' &&
+ \Iluma\Gateway\RecurringMandates::monthAfter('2026-02-28 15:14:00',31)==='2026-03-31 15:14:00' &&
  \Iluma\Gateway\RecurringMandates::monthAfter('2027-02-28 15:14:00')==='2027-03-28 15:14:00',
- 'Calendar-month clamp preserves February behavior');
+ 'Calendar-month clamp preserves subscriber anniversary through February');
 putenv('NEXI_STAGING_BASE=https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp');
 putenv('MIT_SANDBOX_EXECUTION_ENABLED=0');
 putenv('MIT_SANDBOX_UAT_APPROVED=0');
@@ -274,6 +275,14 @@ try{
  $mitGateFailed=false;
 }catch(\RuntimeException $e){$mitGateFailed=str_contains($e->getMessage(),'MIT sandbox execution is locked');}
 check($mitGateFailed,'No MIT charge is possible without staged execution and UAT approval flags');
+check(str_contains(file_get_contents(dirname(__DIR__).'/src/NexiClient.php'),"IL[CM][A-F0-9]{24}"),
+ 'Both CIT and MIT contracts may be deactivated on cancellation');
+check(str_contains(file_get_contents(dirname(__DIR__).'/src/RecurringMandates.php'),
+ "WHERE id=? FOR UPDATE") &&
+ str_contains(file_get_contents(dirname(__DIR__).'/src/RecurringMandates.php'),
+ "SELECT status,cancelled_at FROM recurring_mandates"),
+ 'Charge initiation serializes with cancellation acknowledgement');
+
 $mitSource=file_get_contents(dirname(__DIR__).'/src/RecurringMandates.php');
 $mitMigration=file_get_contents(dirname(__DIR__).'/database/migrations/20261110_staging_recurring_mit.sql');
 check(str_contains($mitSource,'UNIQUE')===false &&

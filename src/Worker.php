@@ -12,7 +12,7 @@ final class Worker {
     // An authoritative provider GET 404 after its HPP returned HTTP400
     // permits closing only THAT rejected initial checkout. Do not unlock
     // general unknown orders, pending CAPTURE, or any real Nexi order.
-    if($env==='staging'&&preg_match('/^Nexi status 404\\b/',$e->getMessage())){
+    if($env==='staging'&&str_starts_with($e->getMessage(),'Nexi status 404 ')){
      try{if(Payments::reconcileRejectedHpp404($env,$row['order_id']))continue;}
      catch(\Throwable $inner){error_log('Rejected HPP reconciliation deferred');}
     }

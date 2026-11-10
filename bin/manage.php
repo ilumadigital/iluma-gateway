@@ -9,6 +9,9 @@ if($command==='migrate-staging-recurring'){
  $db=Db::get('staging');
  $sql=file_get_contents(dirname(__DIR__).'/database/migrations/20261110_staging_recurring_mit.sql');
  if($sql===false)die("Missing migration\n");
+ // Strip SQL line comments before splitting statements (comments may contain
+ // semicolons). Never execute migration fragments as arbitrary SQL.
+ $sql=preg_replace('/^\\s*--[^\\r\\n]*$/m','',$sql);
  foreach(array_filter(array_map('trim',explode(';',$sql))) as $stmt){
    if(preg_match('/CREATE TABLE IF NOT EXISTS/i',$stmt))$db->exec($stmt);
  }

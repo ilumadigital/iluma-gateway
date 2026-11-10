@@ -25,6 +25,33 @@ final class SavedCards {
    throw new HttpError(403,'Stored cards are staging-only');
   return ['save'=>$save,'reuse'=>$reuse,'version'=>$save?self::CONSENT_VERSION:null];
  }
+ /**
+  * Read-only deterministic readiness/eligibility check BEFORE creating a
+  * Gateway payment. Missing schema, duplicate consent or absent verified card
+  * must not become an ambiguous "unknown" transaction at iRadios.
+  * Never performs a provider request or any financial/database write.
+  */
+ public static function preflight(\PDO $db,int $application,string $external,array $choice):void {
+  if(!$choice['save']&&!$choice['reuse'])return;
+  $table=Db::one($db,"SELECT COUNT(*) AS found FROM information_schema.tables
+    WHERE table_schema=DATABASE() AND table_name='saved_card_agreements'");
+  if((int)($table['found']??0)!==1)
+   throw new HttpError(422,'ONECLICK_STAGING_MIGRATION_REQUIRED');
+  $customer=Db::one($db,'SELECT id FROM customers WHERE application_id=? AND external_user_id=?',
+   [$application,$external]);
+  if(!$customer){
+   if($choice['reuse'])throw new HttpError(422,'SAVED_CARD_NOT_AVAILABLE');
+   return;
+  }
+  $saved=Db::one($db,"SELECT status FROM saved_card_agreements
+    WHERE application_id=? AND customer_id=? ORDER BY created_at DESC LIMIT 1",
+   [$application,$customer['id']]);
+  if($choice['save'] && $saved && in_array($saved['status'],
+      ['pending','active','revocation_pending'],true))
+   throw new HttpError(422,'SAVED_CARD_EXISTS_OR_PENDING');
+  if($choice['reuse']&&(!$saved||$saved['status']!=='active'))
+   throw new HttpError(422,'SAVED_CARD_NOT_AVAILABLE');
+ }
  public static function contractId():string {
   return 'ILC'.strtoupper(substr(Security::id(16),0,24));
  }

@@ -20,10 +20,13 @@ if($command==='recurring-preview-staging'){
  $db=Db::get('staging');
  $sql="SELECT m.status,m.verified_at,m.next_due_at,m.paid_through_at,
    m.amount_cents,m.contract_type,m.cancelled_at,
-   c.email,p.confirmed_at AS first_paid_at
+   c.email,
+   (SELECT MAX(px.confirmed_at) FROM payments px WHERE px.status='paid'
+     AND (px.id=m.initial_payment_id OR
+      px.id IN (SELECT cy.payment_id FROM recurring_cycles cy
+       WHERE cy.mandate_id=m.id))) AS last_paid_at
    FROM recurring_mandates m
-   JOIN customers c ON c.id=m.customer_id
-   JOIN payments p ON p.id=m.initial_payment_id";
+   JOIN customers c ON c.id=m.customer_id";
  $args=[];
  if($email!==''){$sql.=" WHERE c.email=?";$args=[$email];}
  $sql.=" ORDER BY m.created_at DESC LIMIT 25";
@@ -35,10 +38,12 @@ if($command==='recurring-preview-staging'){
  echo "SANDBOX EXECUTION: ".($enabled?'APPROVED':'LOCKED')."\n";
  foreach($rows as $r){
   $next=$r['next_due_at']?strtotime($r['next_due_at'].' UTC'):null;
-  $first=$r['first_paid_at']?strtotime($r['first_paid_at'].' UTC'):null;
-  $earliest=$first!==null?$first+28*86400:null;
+  $paid=$r['last_paid_at']?strtotime($r['last_paid_at'].' UTC'):null;
+  $earliest=$paid!==null?$paid+28*86400:null;
+  $paidThrough=$r['paid_through_at']?strtotime($r['paid_through_at'].' UTC'):null;
   $due=$r['status']==='active'&&$r['verified_at']!==null&&
-    $r['cancelled_at']===null&&$next!==null&&$next<=$asOf;
+    $r['cancelled_at']===null&&$next!==null&&$next<=$asOf&&
+    $paidThrough!==null&&$next===$paidThrough;
   $spacing=$earliest!==null&&$asOf>=$earliest;
   echo "ACCOUNT: ".$r['email']."\n";
   echo "MIT STATE: ".$r['status']."\n";

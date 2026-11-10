@@ -58,6 +58,12 @@ check(\Iluma\Gateway\RecurringMandates::monthAfter('2027-02-28 15:04:05',31)==='
  'MIT renewals preserve January 31 billing anchor after February');
 check(\Iluma\Gateway\RecurringMandates::monthAfter('2028-02-29 15:04:05',31)==='2028-03-31 15:04:05',
  'MIT renewals preserve original day across leap February');
+$paymentSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
+check($paymentSource!==false&&
+ str_contains($paymentSource,"last_error_code='HPP_REJECTED_400'")&&
+ str_contains($paymentSource,"UPDATE broadcaster_mandates")&&
+ str_contains($paymentSource,"initial_payment_id=? AND status IN ('pending','verification_pending')"),
+ 'Confirmed Nexi HPP 400 + read-only 404 releases only the pending Broadcaster mandate');
 $bmSource=file_get_contents(dirname(__DIR__).'/src/BroadcasterMandates.php');
 $paySource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
 check($bmSource!==false&&$paySource!==false&&

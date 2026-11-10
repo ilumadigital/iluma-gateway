@@ -140,8 +140,14 @@ try {
   $id=(string)($_GET['id']??'');$row=Db::one($db,'SELECT p.*,c.email,pr.title FROM payments p JOIN customers c ON c.id=p.customer_id JOIN products pr ON pr.id=p.product_id WHERE p.id=?',[$id]);if(!$row)throw new HttpError(404,'Not found');
   foreach(['Payment ID'=>$row['id'],'Nexi Order ID'=>$row['order_id'],'Nexi Operation ID'=>$row['operation_id']??'—','Περιβάλλον'=>$env,'Πελάτης'=>$row['email'],'Προϊόν'=>$row['title'],'Κατάσταση'=>$row['status'],'Ποσό'=>euro((int)$row['amount_cents'])] as $label=>$value)$content.='<p><b>'.html($label).':</b> '.html((string)$value).'</p>';
   if($env==='staging'){
-   $mandateId=\Iluma\Gateway\RecurringAdmin::byPayment($db,$id);
+   $mandateId=\Iluma\Gateway\RecurringAdmin::byPayment($db,$id)
+    ??\Iluma\Gateway\BroadcasterRecurringAdmin::byPayment($db,$id);
    if($mandateId)$content.='<p><a href="/ilm-admin/?p=subscription&id='.html($mandateId).'">Προβολή συνδρομής Nexi MIT</a></p>';
+   $scope=\Iluma\Gateway\BroadcasterRecurringAdmin::scopeByPayment($db,$id);
+   if($scope){
+    $content.='<p><b>Προϊόν Broadcaster:</b> '.html((string)$scope['sku']).'</p>';
+    $content.='<p><b>Σταθμός:</b> '.html((string)($scope['resource_id']??'Όλος ο λογαριασμός')).'</p>';
+   }
   }
   $logs=Db::all($db,'SELECT event_type,message_gr,occurred_at FROM payment_logs WHERE payment_id=? ORDER BY occurred_at,id',[$id]);
   $content.='<h2>Χρονολόγιο γεγονότων</h2><ol>';foreach($logs as $entry)$content.='<li><time>'.html(localDate($entry['occurred_at'])).'</time> — '.html($entry['message_gr']).'</li>';$content.='</ol>';
@@ -162,7 +168,10 @@ try {
   $content.='<table><tr><th>Όνομα</th><th>Email</th><th>External User ID</th><th>Πληρωμές</th></tr>';
   foreach($rows as $r)$content.='<tr><td>'.html($r['name']).'</td><td>'.html($r['email']).'</td><td>'.html($r['external_user_id']).'</td><td>'.(int)$r['payments'].'</td></tr>';$content.='</table>';
  } elseif($p==='subscriptions'){
-  if($env==='staging')$content.=\Iluma\Gateway\RecurringAdmin::index($db,$reg,(string)($_GET['q']??''));
+  if($env==='staging'){
+   $content.=\Iluma\Gateway\RecurringAdmin::index($db,$reg,(string)($_GET['q']??''));
+   $content.=\Iluma\Gateway\BroadcasterRecurringAdmin::index($db,$reg,(string)($_GET['q']??''));
+  }
   else $content.='<p>Η Nexi MIT recurring υπηρεσία δεν είναι ενεργή στο production.</p>';
   $legacy=Db::all($db,"SELECT s.state,s.next_billing_at,c.email,pr.title
    FROM subscriptions s JOIN customers c ON c.id=s.customer_id
@@ -175,7 +184,10 @@ try {
   }
  } elseif($p==='subscription'){
   if($env!=='staging')throw new HttpError(404,'Not found');
-  $content.=\Iluma\Gateway\RecurringAdmin::detail($db,$reg,(string)($_GET['id']??''));
+  $subscriptionId=(string)($_GET['id']??'');
+  $content.=\Iluma\Gateway\BroadcasterRecurringAdmin::hasMandate($db,$subscriptionId)
+   ?\Iluma\Gateway\BroadcasterRecurringAdmin::detail($db,$reg,$subscriptionId)
+   :\Iluma\Gateway\RecurringAdmin::detail($db,$reg,$subscriptionId);
  } elseif($p==='applications'){
   $apps=Db::all($reg,'SELECT * FROM applications');foreach($apps as $app)$content.='<article><h2>'.html($app['name']).'</h2><p>Staging: '.html($app['staging_origin']).'</p><p>Production: '.html($app['production_origin']).'</p></article>';
  } elseif($p==='keys'){

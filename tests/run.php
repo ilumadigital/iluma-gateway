@@ -233,4 +233,59 @@ check(str_contains($savedCardsSource,"table_name='saved_card_agreements'") &&
 check(str_contains($savedCardsSource,"SAVED_CARD_EXISTS_OR_PENDING") &&
  str_contains($savedCardsSource,'if(!$choice[\'save\']&&!$choice[\'reuse\'])return;'),
  'Ordinary card checkout remains available without OneClick migration');
+
+$mitChoice=\Iluma\Gateway\RecurringMandates::choice([
+ 'auto_renew'=>true,'recurring_consent_version'=>\Iluma\Gateway\RecurringMandates::CONSENT
+ ],'staging','L-PREM','iradiosgr');
+check($mitChoice===true,'Explicit listener consent creates eligible recurring mandate');
+check(\Iluma\Gateway\RecurringMandates::choice([],'staging','L-PREM','iradiosgr')===false,
+ 'No automatic renewal by default; opt-in is separate from OneClick');
+foreach([
+ ['auto_renew'=>true],
+ ['auto_renew'=>true,'recurring_consent_version'=>'wrong'],
+ ['auto_renew'=>true,'save_card'=>true,'recurring_consent_version'=>\Iluma\Gateway\RecurringMandates::CONSENT],
+ ['auto_renew'=>'1','recurring_consent_version'=>\Iluma\Gateway\RecurringMandates::CONSENT]
+] as $invalidMit){
+ try{\Iluma\Gateway\RecurringMandates::choice($invalidMit,'staging','L-PREM','iradiosgr');$badMitAllowed=true;}
+ catch(\Iluma\Gateway\HttpError){$badMitAllowed=false;}
+ check(!$badMitAllowed,'Missing/ambiguous MIT consent rejected before payment creation');
+}
+try{\Iluma\Gateway\RecurringMandates::choice([
+ 'auto_renew'=>true,'recurring_consent_version'=>\Iluma\Gateway\RecurringMandates::CONSENT
+ ],'production','L-PREM','iradiosgr');$prodMitAllowed=true;}
+catch(\Iluma\Gateway\HttpError){$prodMitAllowed=false;}
+check(!$prodMitAllowed,'Production MIT enrollment is locked');
+$mitContract=\Iluma\Gateway\RecurringMandates::contractId();
+$mitRecurrence=\Iluma\Gateway\RecurringMandates::recurrence($mitContract);
+check((bool)preg_match('/^ILM[A-F0-9]{24}$/D',$mitContract) &&
+ $mitRecurrence['action']==='CONTRACT_CREATION' &&
+ $mitRecurrence['contractType']==='MIT_SCHEDULED' &&
+ $mitRecurrence['contractFrequency']==='28',
+ 'Nexi scheduled MIT contract has valid ID and 28-day minimum monthly frequency');
+check(\Iluma\Gateway\RecurringMandates::monthAfter('2026-01-31 15:14:00')==='2026-02-28 15:14:00' &&
+ \Iluma\Gateway\RecurringMandates::monthAfter('2027-02-28 15:14:00')==='2027-03-28 15:14:00',
+ 'Calendar-month clamp preserves February behavior');
+putenv('MIT_SANDBOX_EXECUTION_ENABLED=0');
+putenv('MIT_SANDBOX_UAT_APPROVED=0');
+try{
+ NexiClient::forEnvironment('staging')->startMit('IL'.str_repeat('A',24),
+  'IR'.str_repeat('A',24),$mitContract,399);
+ $mitGateFailed=false;
+}catch(\Throwable){$mitGateFailed=true;}
+check($mitGateFailed,'No MIT charge is possible without staged execution and UAT approval flags');
+$mitSource=file_get_contents(dirname(__DIR__).'/src/RecurringMandates.php');
+$mitMigration=file_get_contents(dirname(__DIR__).'/database/migrations/20261110_staging_recurring_mit.sql');
+check(str_contains($mitSource,'UNIQUE')===false &&
+ str_contains($mitMigration,'UNIQUE KEY one_cycle(mandate_id,cycle_due_at)') &&
+ str_contains($mitSource,"status='active'") &&
+ str_contains($mitSource,'chargeDue('),
+ 'Unique monthly renewal cycle and fail-closed scheduler are present');
+$workerSource=file_get_contents(dirname(__DIR__).'/bin/work.php');
+check(str_contains($workerSource,'RecurringMandates::chargeDue(') &&
+ str_contains($workerSource,'RecurringMandates::pendingVerification('),
+ 'MIT scheduler is isolated behind staging worker/provider readback');
+$routerSource=file_get_contents(dirname(__DIR__).'/public/index.php');
+check(str_contains($routerSource,"/api/v1/recurring/cancel") &&
+ str_contains($routerSource,"/api/v1/billing/history"),
+ 'HMAC-account scoped recurring cancellation and payment history APIs available');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

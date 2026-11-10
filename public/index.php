@@ -65,6 +65,12 @@ try {
   if($method==='POST' && $path==='/api/v1/winback/status'){
    Http::respond(\Iluma\Gateway\Winback::status($credential,(string)($body['customer_id']??'')));
   }
+  if($method==='POST' && $path==='/api/v1/broadcaster/recurring/status'){
+   Http::respond(\Iluma\Gateway\BroadcasterMandates::status($credential,$body));
+  }
+  if($method==='POST' && $path==='/api/v1/broadcaster/recurring/cancel'){
+   Http::respond(\Iluma\Gateway\BroadcasterMandates::cancel($credential,$body));
+  }
   if($method==='POST' && $path==='/api/v1/recurring/status'){
    Http::respond(\Iluma\Gateway\RecurringMandates::status($credential,(string)($body['customer_id']??'')));
   }

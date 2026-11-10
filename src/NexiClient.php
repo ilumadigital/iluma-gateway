@@ -120,6 +120,28 @@ final class NexiClient {
     ]
   ]);
  }
+ /**
+  * Scoped broadcaster MIT, isolated from Listener Premium's 399-cent guard.
+  * Both staging approval flags must be explicitly set after UAT.
+  */
+ public function startBroadcasterMit(string $orderId,string $customerId,
+   string $contractId,int $amountCents):array {
+  if($this->environment!=='staging'||
+    Config::get('APP_ENV')==='production'||
+    Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')!=='1'||
+    Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')!=='1')
+   throw new \RuntimeException('Broadcaster MIT execution locked');
+  if(!preg_match('/^IL[A-F0-9]{24}$/D',$orderId)||
+     !preg_match('/^ILM(?:[A-F0-9]{15}|[A-F0-9]{24})$/D',$contractId)||
+     !preg_match('/^[A-Z0-9]{1,27}$/D',$customerId)||
+     !in_array($amountCents,array_values(BroadcasterMandates::PRICE),true))
+   throw new \InvalidArgumentException('Invalid broadcaster MIT parameters');
+  return $this->request('POST','/api/v1/orders/mit',[
+   'captureType'=>'IMPLICIT','contractId'=>$contractId,
+   'order'=>['orderId'=>$orderId,'customerId'=>$customerId,
+     'amount'=>(string)$amountCents,'currency'=>'EUR']
+  ]);
+ }
  public function contractsForCustomer(string $customerId):array {
   if(!preg_match('/^[A-Za-z0-9._-]{1,190}$/D',$customerId))throw new \InvalidArgumentException('Invalid customer id');
   return $this->request('GET','/api/v1/contracts/customers/'.$customerId);

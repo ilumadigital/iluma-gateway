@@ -33,12 +33,12 @@ try {
   // Nexi does not need access to the iRadios session or its JWT.
   $order=(string)($_GET['order']??'');
   if(!preg_match('/^IL[A-F0-9]{24}$/D',$order))throw new HttpError(400,'Invalid order');
-  $foundEnv=null;$foundPaymentId=null;
+  $foundEnv=null;$foundPaymentId=null;$foundSku=null;
   foreach(['staging','production'] as $candidate){
    if($candidate==='production'&&!Config::liveAllowed())continue;
    $found=Db::one(Db::get($candidate),
-    'SELECT id FROM payments WHERE order_id=?',[$order]);
-   if($found){$foundEnv=$candidate;$foundPaymentId=(string)$found['id'];break;}
+    'SELECT p.id,pr.sku FROM payments p JOIN products pr ON pr.id=p.product_id WHERE p.order_id=?',[$order]);
+   if($found){$foundEnv=$candidate;$foundPaymentId=(string)$found['id'];$foundSku=(string)$found['sku'];break;}
   }
   if($foundEnv===null)throw new HttpError(404,'Order not found');
   // Server-to-server verification only; provider return itself cannot mark paid.
@@ -48,7 +48,7 @@ try {
    // only an existing outbox event after authoritative provider reconciliation.
    if($state==='paid')Worker::deliverPayment($foundEnv,$foundPaymentId);
   }catch(\Throwable $e){error_log('Gateway hosted return reconciliation or delivery deferred');}
-  header('Location: '.\Iluma\Gateway\CheckoutReturn::url($foundEnv,$path,$order),true,303);
+  header('Location: '.\Iluma\Gateway\CheckoutReturn::url($foundEnv,$path,$order,$foundSku),true,303);
   exit;
  }
  if(str_starts_with($path,'/api/v1/')){
@@ -64,6 +64,12 @@ try {
   }
   if($method==='POST' && $path==='/api/v1/winback/status'){
    Http::respond(\Iluma\Gateway\Winback::status($credential,(string)($body['customer_id']??'')));
+  }
+  if($method==='POST' && $path==='/api/v1/broadcaster/recurring/status'){
+   Http::respond(\Iluma\Gateway\BroadcasterMandates::status($credential,$body));
+  }
+  if($method==='POST' && $path==='/api/v1/broadcaster/recurring/cancel'){
+   Http::respond(\Iluma\Gateway\BroadcasterMandates::cancel($credential,$body));
   }
   if($method==='POST' && $path==='/api/v1/recurring/status'){
    Http::respond(\Iluma\Gateway\RecurringMandates::status($credential,(string)($body['customer_id']??'')));

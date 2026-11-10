@@ -61,6 +61,9 @@ final class NexiClient {
  }
  public function startCheckout(string $orderId,int $amount,string $customerRef,?array $recurrence=null): array {
   $session=['actionType'=>'PAY','amount'=>(string)$amount,'paymentService'=>'CARDS',
+   // Required by XPay Greece POST /orders/hpp (ISO 639-2); without it the
+   // provider may reject HPP creation before a card form is issued.
+   'language'=>'ELL',
    'resultUrl'=>'https://'.Config::get('GATEWAY_HOST').'/checkout/result?order='.$orderId,
    'cancelUrl'=>'https://'.Config::get('GATEWAY_HOST').'/checkout/cancel?order='.$orderId,
    'notificationUrl'=>'https://'.Config::get('GATEWAY_HOST').'/nexi/'.$this->environment.'/notification'];

@@ -22,8 +22,22 @@ try {
   Http::respond(['received'=>true,'state'=>$state]);
  }
  if($method==='GET' && in_array($path,['/checkout/result','/checkout/cancel'],true)) {
-  header('Content-Type: text/html; charset=utf-8');
-  echo '<!doctype html><html lang="el"><meta charset="utf-8"><title>ILUMA</title><body><p>Η ολοκλήρωση της πληρωμής επιβεβαιώνεται μέσω του iRadios. Μπορείτε να επιστρέψετε στην εφαρμογή.</p></body></html>';
+  // The browser return is navigation only, NEVER payment evidence.
+  // Nexi does not need access to the iRadios session or its JWT.
+  $order=(string)($_GET['order']??'');
+  if(!preg_match('/^IL[A-F0-9]{24}$/D',$order))throw new HttpError(400,'Invalid order');
+  $foundEnv=null;
+  foreach(['staging','production'] as $candidate){
+   if($candidate==='production'&&!Config::liveAllowed())continue;
+   $found=Db::one(Db::get($candidate),
+    'SELECT id FROM payments WHERE order_id=?',[$order]);
+   if($found){$foundEnv=$candidate;break;}
+  }
+  if($foundEnv===null)throw new HttpError(404,'Order not found');
+  // Server-to-server verification only; provider return itself cannot mark paid.
+  try{Payments::reconcile($foundEnv,$order);}
+  catch(\Throwable $e){error_log('Gateway hosted return reconciliation deferred');}
+  header('Location: '.\Iluma\Gateway\CheckoutReturn::url($foundEnv,$path,$order),true,303);
   exit;
  }
  if(str_starts_with($path,'/api/v1/')){

@@ -74,7 +74,7 @@ final class NexiClient {
  }
  public static function oneClickRecurrence(string $action,string $contractId):array {
   if(!in_array($action,['CONTRACT_CREATION','SUBSEQUENT_PAYMENT'],true) ||
-     !preg_match('/^ILC[A-F0-9]{24}$/D',$contractId))
+     !preg_match('/^ILC(?:[A-F0-9]{15}|[A-F0-9]{24})$/D',$contractId))
    throw new \InvalidArgumentException('Invalid OneClick contract');
   return ['action'=>$action,'contractId'=>$contractId,'contractType'=>'CIT'];
  }
@@ -93,7 +93,7 @@ final class NexiClient {
   return $this->request('POST','/api/v1/orders/hpp',['order'=>['orderId'=>$orderId,'amount'=>(string)$amount,'currency'=>'EUR','customerId'=>self::providerCustomerId($customerRef)],'paymentSession'=>$session]);
  }
  public function deactivateContract(string $contractId):array {
-  if(!preg_match('/^IL[CM][A-F0-9]{24}$/D',$contractId))
+  if(!preg_match('/^IL[CM](?:[A-F0-9]{15}|[A-F0-9]{24})$/D',$contractId))
    throw new \InvalidArgumentException('Invalid provider contract');
   return $this->request('POST','/api/v1/contracts/'.$contractId.'/deactivation');
  }
@@ -108,7 +108,7 @@ final class NexiClient {
      Config::get('MIT_SANDBOX_UAT_APPROVED')!=='1')
    throw new \RuntimeException('MIT sandbox execution is locked');
   if(!preg_match('/^IL[A-F0-9]{24}$/D',$orderId)||
-     !preg_match('/^ILM[A-F0-9]{24}$/D',$contractId)||
+     !preg_match('/^ILM(?:[A-F0-9]{15}|[A-F0-9]{24})$/D',$contractId)||
      !preg_match('/^[A-Z0-9]{1,27}$/D',$providerCustomerId)||
      $amountCents!==399)throw new \InvalidArgumentException('Invalid MIT parameters');
   return $this->request('POST','/api/v1/orders/mit',[

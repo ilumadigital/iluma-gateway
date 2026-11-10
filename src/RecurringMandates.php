@@ -1,0 +1,146 @@
+<?php
+declare(strict_types=1);
+namespace Iluma\Gateway;
+
+/**
+ * Explicit subscription mandate for XPay Greece MIT_SCHEDULED.
+ * Staging-only, and independently gated from OneClick/CIT.
+ * Each provider request uses a unique gateway order, financial reconciliation
+ * and the durable HMAC outbox. No PAN/CVV is stored in this service.
+ */
+final class RecurringMandates {
+ public const CONSENT='iradios-mit-monthly-v1';
+ public static function choice(array $body,string $env,string $sku,string $slug):bool {
+  $enable=$body['auto_renew']??false;
+  if(!is_bool($enable))throw new HttpError(422,'AUTO_RENEW_BOOL_REQUIRED');
+  $version=$body['recurring_consent_version']??null;
+  if($enable&&$version!==self::CONSENT)
+   throw new HttpError(422,'EXPLICIT_RECURRING_CONSENT_REQUIRED');
+  if(!$enable && $version!==null)throw new HttpError(422,'INVALID_RECURRING_CONSENT');
+  if($enable&&($env!=='staging'||$sku!=='L-PREM'||$slug!=='iradiosgr'))
+   throw new HttpError(403,'RECURRING_STAGING_ONLY');
+  if($enable&&(!empty($body['save_card'])||!empty($body['use_saved_card'])))
+   throw new HttpError(422,'CANNOT_COMBINE_CIT_AND_MIT');
+  return $enable;
+ }
+ public static function contractId():string {
+  return 'ILM'.strtoupper(substr(Security::id(),0,24));
+ }
+ public static function recurrence(string $contractId):array {
+  if(!preg_match('/^ILM[A-F0-9]{24}$/D',$contractId))throw new \InvalidArgumentException('Contract id');
+  // Calendar months can be 28 days apart. Nexi's scheduled minimum interval
+  // is therefore 28 days; merchant schedule remains calendar monthly in UTC.
+  return [
+   'action'=>'CONTRACT_CREATION','contractId'=>$contractId,
+   'contractType'=>'MIT_SCHEDULED','contractFrequency'=>'28',
+   'contractExpiryDate'=>gmdate('Y-m-d\TH:i:s.000\Z',strtotime('+10 years'))
+  ];
+ }
+ public static function preflight(\PDO $db,int $application,string $external,bool $auto):void {
+  if(!$auto)return;
+  $table=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
+   WHERE table_schema=DATABASE() AND table_name='recurring_mandates'");
+  if((int)($table['n']??0)!==1)
+   throw new HttpError(422,'RECURRING_MIGRATION_REQUIRED');
+  $customer=Db::one($db,'SELECT id FROM customers WHERE application_id=? AND external_user_id=?',
+   [$application,$external]);
+  if(!$customer)return;
+  $active=Db::one($db,"SELECT id FROM recurring_mandates
+   WHERE application_id=? AND customer_id=? AND status IN ('pending','active','past_due','verification_pending')
+   LIMIT 1",[$application,$customer['id']]);
+  if($active)throw new HttpError(422,'RECURRING_AGREEMENT_EXISTS');
+ }
+ public static function prepare(\PDO $db,int $app,string $customer,string $payment,string $providerId):array {
+  $id=self::contractId();
+  Db::exec($db,"INSERT INTO recurring_mandates
+   (id,application_id,customer_id,initial_payment_id,provider_customer_id,contract_id,
+    consent_version,consent_at,status)
+   VALUES(?,?,?,?,?,?,?,UTC_TIMESTAMP(),'pending')",
+   [Security::id(),$app,$customer,$payment,$providerId,$id,self::CONSENT]);
+  return self::recurrence($id);
+ }
+ private static function credentialCustomer(array $credential,string $external):array {
+  if($credential['environment']!=='staging'||($credential['slug']??'')!=='iradiosgr')
+   throw new HttpError(403,'STAGING_ONLY');
+  if(!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
+   throw new HttpError(422,'CUSTOMER_SCOPE_INVALID');
+  return [Db::get('staging'),(int)$credential['application_id']];
+ }
+ public static function status(array $credential,string $external):array {
+  [$db,$app]=self::credentialCustomer($credential,$external);
+  $row=Db::one($db,"SELECT r.status,r.consent_at,r.next_due_at,r.paid_through_at,r.cancelled_at
+   FROM recurring_mandates r JOIN customers c ON c.id=r.customer_id
+   WHERE r.application_id=? AND c.application_id=? AND c.external_user_id=?
+   ORDER BY r.created_at DESC LIMIT 1",[$app,$app,$external]);
+  return [
+   'state'=>$row['status']??'none',
+   'auto_renew'=>isset($row['status'])&&$row['status']==='active',
+   'amount_cents'=>399,'currency'=>'EUR','interval'=>'calendar_month',
+   'next_charge_at'=>$row['next_due_at']??null,
+   'paid_through_at'=>$row['paid_through_at']??null,
+   'cancelled_at'=>$row['cancelled_at']??null,
+   'execution_enabled'=>Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'
+      && Config::get('APP_ENV')==='staging'
+  ];
+ }
+ public static function cancel(array $credential,string $external):array {
+  [$db,$app]=self::credentialCustomer($credential,$external);
+  $db->beginTransaction();
+  try{
+   $row=Db::one($db,"SELECT r.id FROM recurring_mandates r
+    JOIN customers c ON c.id=r.customer_id
+    WHERE r.application_id=? AND c.application_id=? AND c.external_user_id=?
+      AND r.status IN ('pending','active','verification_pending','past_due')
+    ORDER BY r.created_at DESC LIMIT 1 FOR UPDATE",[$app,$app,$external]);
+   if($row)Db::exec($db,"UPDATE recurring_mandates SET status='cancelled',
+     cancelled_at=UTC_TIMESTAMP(),next_due_at=NULL WHERE id=?",[$row['id']]);
+   $db->commit();
+  }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
+  return self::status($credential,$external);
+ }
+ public static function verifyPaid(string $env,string $paymentId):void {
+  if($env!=='staging')return;
+  $db=Db::get('staging');
+  $m=Db::one($db,"SELECT m.* FROM recurring_mandates m
+   JOIN payments p ON p.id=m.initial_payment_id
+   WHERE p.id=? AND p.status='paid' AND m.status IN ('pending','verification_pending')",[$paymentId]);
+  if(!$m)return;
+  $response=NexiClient::forEnvironment('staging')->contractsForCustomer($m['provider_customer_id']);
+  $confirmed=false;
+  foreach(($response['contracts']??[]) as $c){
+   if(is_array($c)&&($c['contractId']??null)===$m['contract_id']
+      &&($c['contractType']??null)==='MIT_SCHEDULED'){$confirmed=true;break;}
+  }
+  if(!$confirmed){
+   Db::exec($db,"UPDATE recurring_mandates SET status='verification_pending'
+     WHERE id=? AND status='pending'",[$m['id']]);
+   return;
+  }
+  $paid=Db::one($db,'SELECT confirmed_at FROM payments WHERE id=?',[$paymentId]);
+  if(!$paid||!$paid['confirmed_at'])return;
+  $end=(new \DateTimeImmutable($paid['confirmed_at'],new \DateTimeZone('UTC')))
+    ->modify('+1 month')->format('Y-m-d H:i:s');
+  Db::exec($db,"UPDATE recurring_mandates SET status='active',verified_at=UTC_TIMESTAMP(),
+   paid_through_at=?,next_due_at=? WHERE id=? AND status IN ('pending','verification_pending')",
+   [$end,$end,$m['id']]);
+ }
+ public static function pendingVerification(string $env,int $limit=10):void {
+  if($env!=='staging')return;
+  $rows=Db::all(Db::get($env),"SELECT m.initial_payment_id FROM recurring_mandates m
+   JOIN payments p ON p.id=m.initial_payment_id WHERE m.status IN ('pending','verification_pending')
+   AND p.status='paid' ORDER BY m.created_at LIMIT ".max(1,min(30,$limit)));
+  foreach($rows as $row)try{self::verifyPaid($env,$row['initial_payment_id']);}
+   catch(\Throwable $e){error_log('MIT mandate verification deferred');}
+ }
+ public static function pendingDeactivation(string $env,int $limit=10):void {
+  if($env!=='staging')return;
+  $rows=Db::all(Db::get($env),"SELECT id,contract_id FROM recurring_mandates
+   WHERE status='cancelled' AND deactivated_at IS NULL
+   ORDER BY cancelled_at LIMIT ".max(1,min(30,$limit)));
+  foreach($rows as $r)try{
+   NexiClient::forEnvironment($env)->deactivateContract($r['contract_id']);
+   Db::exec(Db::get($env),"UPDATE recurring_mandates
+    SET deactivated_at=UTC_TIMESTAMP() WHERE id=? AND status='cancelled'",[$r['id']]);
+  }catch(\Throwable $e){error_log('MIT contract deactivation deferred');}
+ }
+}

@@ -12,6 +12,7 @@ Deploy the Gateway `main` first, then run from its Hostinger root:
 ```bash
 /opt/alt/php84/usr/bin/php bin/manage.php migrate-staging-saved-cards
 /opt/alt/php84/usr/bin/php bin/manage.php migrate-staging-recurring
+/opt/alt/php84/usr/bin/php bin/manage.php recurring-doctor-staging
 /opt/alt/php84/usr/bin/php bin/work.php staging
 ```
 
@@ -57,6 +58,12 @@ Only following verified Nexi merchant permission and hands-on UAT of first
 payment, one `POST /orders/mit`, result reconciliation, subscriber webhook,
 and cancellation, may an authorized operator set both flags to 1 in the
 **staging private environment**. This is an explicit financial change.
+
+The first card-on-file/recurring contracts use compact, opaque 18-character
+merchant contract IDs. Older 27-character saved contracts remain recognized
+for user-initiated CIT payments and cancellation. Test the Nexi HPP response
+for exact provider acceptance; a previously recorded unknown checkout
+must be reconciled before any replacement payment.
 
 The worker:
 1. Finds active, verified mandates past `next_due_at`.

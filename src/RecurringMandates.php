@@ -85,9 +85,9 @@ final class RecurringMandates {
    'state'=>$row['status']??'none',
    'auto_renew'=>isset($row['status'])&&$row['status']==='active',
    'amount_cents'=>399,'currency'=>'EUR','interval'=>'calendar_month',
-   'next_charge_at'=>$row['next_due_at']??null,
-   'paid_through_at'=>$row['paid_through_at']??null,
-   'cancelled_at'=>$row['cancelled_at']??null,
+   'next_charge_at'=>!empty($row['next_due_at'])?str_replace(' ','T',$row['next_due_at']).'Z':null,
+   'paid_through_at'=>!empty($row['paid_through_at'])?str_replace(' ','T',$row['paid_through_at']).'Z':null,
+   'cancelled_at'=>!empty($row['cancelled_at'])?str_replace(' ','T',$row['cancelled_at']).'Z':null,
    'execution_enabled'=>Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'
       && Config::get('APP_ENV')==='staging'
   ];

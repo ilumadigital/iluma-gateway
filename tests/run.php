@@ -44,6 +44,18 @@ $malformedCapture=$implicit;$malformedCapture['orderStatus']['capturedAmount']='
 check(PaymentState::fromNexi($malformedCapture,100,'ILIMPLICIT100')===['unknown',null],'malformed captured amount rejected');
 $refunded=$implicit;$refunded['orderStatus']['lastOperationType']='REFUND';
 check(PaymentState::fromNexi($refunded,100,'ILIMPLICIT100')===['unknown',null],'refunded last operation is not newly paid');
+check(\\Iluma\\Gateway\\CheckoutReturn::url('staging','/checkout/result','IL'.str_repeat('A',24)) ===
+ 'https://stage.iradios.gr/premium?gateway_return=result&order=IL'.str_repeat('A',24),'Gateway returns to iRadios staging after Nexi');
+check(\\Iluma\\Gateway\\CheckoutReturn::url('production','/checkout/cancel','IL'.str_repeat('B',24)) ===
+ 'https://play.iradios.gr/premium?gateway_return=cancel&order=IL'.str_repeat('B',24),'Production callback targets production iRadios only');
+foreach(['https://evil.test/','/checkout/unexpected'] as $invalidPath){
+ try{\\Iluma\\Gateway\\CheckoutReturn::url('staging',$invalidPath,'IL'.str_repeat('A',24));$returnAccepted=true;}
+ catch(\\InvalidArgumentException){$returnAccepted=false;}
+ check(!$returnAccepted,'Arbitrary return path refused');
+}
+try{\\Iluma\\Gateway\\CheckoutReturn::url('staging','/checkout/result','../bad');$badOrderAllowed=true;}
+catch(\\InvalidArgumentException){$badOrderAllowed=false;}
+check(!$badOrderAllowed,'Checkout return requires a valid provider order ID');
 putenv('NEXI_STAGING_BASE=https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp');putenv('NEXI_PRODUCTION_BASE=https://xpay.nexigroup.com/api/phoenix-0.0/psp');
 check(str_contains(Config::base('staging'),'xpaysandbox'),'staging endpoint pinned');
 putenv('NEXI_STAGING_BASE=https://xpay.nexigroup.com/api/phoenix-0.0/psp');

@@ -62,6 +62,9 @@ try {
   if($method==='POST' && $path==='/api/v1/billing/history'){
    Http::respond(Payments::history($credential,(string)($body['customer_id']??'')));
   }
+  if($method==='POST' && $path==='/api/v1/winback/status'){
+   Http::respond(\Iluma\Gateway\Winback::status($credential,(string)($body['customer_id']??'')));
+  }
   if($method==='POST' && $path==='/api/v1/recurring/status'){
    Http::respond(\Iluma\Gateway\RecurringMandates::status($credential,(string)($body['customer_id']??'')));
   }

@@ -357,4 +357,52 @@ check(str_contains($preview,'READ-ONLY MIT PREVIEW (NO CHARGE)') &&
 check(str_contains(file_get_contents(dirname(__DIR__).'/src/RecurringMandates.php'),
  'self::hasProviderSpacing('),
  'Scheduler enforces provider minimum spacing independently of admin virtual time');
+
+$oneDayAgo=gmdate('Y-m-d\\TH:i:s.000\\Z',time()-86400);
+$thirtyDaysAgo=gmdate('Y-m-d\\TH:i:s.000\\Z',time()-30*86400-60);
+check(\Iluma\Gateway\Winback::expiredAt(
+ ['winback_expired_at'=>$oneDayAgo],'staging','L-WINBACK-199','iradiosgr')!=='',
+ 'Signed iRadios one-time winback can enter within 30 days of expired paid period');
+try{\Iluma\Gateway\Winback::expiredAt(
+ ['winback_expired_at'=>$thirtyDaysAgo],'staging','L-WINBACK-199','iradiosgr');
+ $expiredAccepted=true;}catch(\Iluma\Gateway\HttpError){$expiredAccepted=false;}
+check(!$expiredAccepted,'Winback expires permanently 30 days after paid through');
+try{\Iluma\Gateway\Winback::expiredAt(
+ ['winback_expired_at'=>$oneDayAgo],'production','L-WINBACK-199','iradiosgr');
+ $prodAccepted=true;}catch(\Iluma\Gateway\HttpError){$prodAccepted=false;}
+check(!$prodAccepted,'No production discount checkout via staging offer');
+try{\Iluma\Gateway\Winback::expiredAt(
+ ['winback_expired_at'=>$oneDayAgo],'staging','L-PREM','iradiosgr');
+ $spoofAccepted=true;}catch(\Iluma\Gateway\HttpError){$spoofAccepted=false;}
+check(!$spoofAccepted,'Regular Premium checkout forbids forged promotional expiry');
+check(\Iluma\Gateway\RecurringMandates::choice([
+ 'auto_renew'=>true,
+ 'recurring_consent_version'=>\Iluma\Gateway\RecurringMandates::CONSENT
+ ],'staging','L-WINBACK-199','iradiosgr'),
+ 'Explicit MIT consent supports discounted first HPP and later normal 399-cent renewals');
+$winbackSource=file_get_contents(dirname(__DIR__).'/src/Winback.php');
+$claimSchema=file_get_contents(dirname(__DIR__).'/database/migrations/20261110_staging_winback_199.sql');
+check(str_contains($claimSchema,'UNIQUE KEY one_winback_per_account(application_id,customer_id)') &&
+ str_contains($winbackSource,'redeemed_at=UTC_TIMESTAMP()') &&
+ str_contains($winbackSource,'payment_status') &&
+ str_contains($winbackSource,'\'failed\',\'canceled\''),
+ 'Discount redemption is unique per account and consumed only on provider-confirmed capture');
+$paymentSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
+check(str_contains($paymentSource,'Winback::captured($db,$p[\'id\'])') &&
+ str_contains($paymentSource,'Winback::reserve(') &&
+ str_contains($paymentSource,'Winback::preflight('),
+ 'Payment ledger atomically reserves one offer and marks it used on paid reconciliation');
+$cli=file_get_contents(dirname(__DIR__).'/bin/manage.php');
+check(str_contains($cli,"if(\$command==='migrate-staging-winback')") &&
+ str_contains($cli,'L-WINBACK-199') &&
+ str_contains($cli,'199'),
+ 'Staging-only migration installs exactly 199-cent product and claim ledger');
+$mitSource=file_get_contents(dirname(__DIR__).'/src/RecurringMandates.php');
+check(str_contains($mitSource,"sku='L-PREM' AND amount_cents=399") &&
+ str_contains($mitSource,'$regular[\'id\']') &&
+ str_contains($mitSource,'One irreversible provider attempt'),
+ 'After first 199-cent HPP, every MIT renewal uses normal L-PREM at 399 cents');
+check(str_contains($paymentSource,'INITIAL_PAYMENT_FAILED') &&
+ str_contains($paymentSource,"status IN ('pending','verification_pending')"),
+ 'Failed first MIT HPP releases pending consent but not unknown payment attempts');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

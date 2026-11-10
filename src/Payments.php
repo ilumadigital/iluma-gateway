@@ -19,11 +19,15 @@ final class Payments {
   if(isset($request['currency']) && $request['currency']!=='EUR')throw new HttpError(422,'Unsupported currency');
   $choice=SavedCards::choice($request,$env,$sku,(string)$credential['slug']);
   $recurring=RecurringMandates::choice($request,$env,$sku,(string)$credential['slug']);
+  $winbackExpiredAt=Winback::expiredAt($request,$env,$sku,(string)$credential['slug']);
+  if($winbackExpiredAt!==null&&($choice['save']||$choice['reuse']))
+   throw new HttpError(422,'WINBACK_CANNOT_COMBINE_CIT');
   $canonical=['customer_id'=>$external,'product_sku'=>$sku,'email'=>$email,'name'=>$name];
   if($choice['save']){$canonical['save_card']=true;$canonical['card_consent_version']=$choice['version'];}
   if($choice['reuse'])$canonical['use_saved_card']=true;
   if($recurring){$canonical['auto_renew']=true;
     $canonical['recurring_consent_version']=RecurringMandates::CONSENT;}
+  if($winbackExpiredAt!==null)$canonical['winback_expired_at']=$winbackExpiredAt;
   $hash=hash('sha256',Security::json($canonical));
   $recurrence=null;
   $db->beginTransaction();
@@ -37,6 +41,8 @@ final class Payments {
    $customer=Db::one($db,'SELECT id FROM customers WHERE application_id=? AND external_user_id=? FOR UPDATE',[$application,$external]);
    if($customer){$cid=$customer['id'];Db::exec($db,'UPDATE customers SET email=?,name=? WHERE id=?',[$email,$name,$cid]);}
    else { $cid=Security::id();Db::exec($db,'INSERT INTO customers(id,application_id,external_user_id,email,name) VALUES(?,?,?,?,?)',[$cid,$application,$external,$email,$name]); }
+   if($winbackExpiredAt!==null)
+    Winback::preflight($db,$application,$cid,$winbackExpiredAt);
    $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
    Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status) VALUES(?,?,?,?,?,?,?,?,'pending')",[$pid,$application,$cid,$product['id'],$order,$key,$hash,$product['amount_cents']]);
    if($choice['save']||$choice['reuse'])
@@ -44,6 +50,8 @@ final class Payments {
      NexiClient::providerCustomerId($external),$choice);
    if($recurring)$recurrence=RecurringMandates::prepare(
      $db,$application,$cid,$pid,NexiClient::providerCustomerId($external));
+   if($winbackExpiredAt!==null)
+    Winback::reserve($db,$application,$cid,$pid,$winbackExpiredAt);
    self::log($db,$pid,'created','Το iRadios ζήτησε πληρωμή.');$db->commit();
   }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
   // Exactly one initial provider call. No automatic replay after error/timeout.
@@ -197,6 +205,19 @@ final class Payments {
       Db::exec($db,"UPDATE billing_cycles SET state=? WHERE id=? AND state='pending'",[$status,$locked['billing_cycle_id']]);
      }
     }
+    if($env==='staging'){
+     if($status==='paid')Winback::captured($db,$p['id']);
+     // A provider-confirmed declined/cancelled *initial* HPP must not
+     // permanently lock the listener out of a new consent or winback retry.
+     // Unknown status remains held for reconciliation, never released.
+     if(in_array($status,['failed','canceled'],true)){
+      Db::exec($db,"UPDATE recurring_mandates SET status='cancelled',
+       cancelled_at=UTC_TIMESTAMP(),next_due_at=NULL,
+       last_error_code='INITIAL_PAYMENT_FAILED'
+       WHERE initial_payment_id=? AND status IN ('pending','verification_pending')",
+       [$p['id']]);
+     }
+    }
     // For an automated cycle, correlate the exact Gateway account and
     // immutable provider payment before sending a signed iRadios event.
     // The migration is optional until staged rollout; old payments remain safe.
@@ -215,7 +236,11 @@ final class Payments {
     }
     self::log($db,$p['id'],$status,$status==='paid'?'Η Nexi επιβεβαίωσε επιτυχημένη πληρωμή.':($status==='failed'?'Η Nexi απέρριψε την πληρωμή.':'Η συναλλαγή ακυρώθηκε.'));
     Db::exec($db,'INSERT INTO payment_attempts(payment_id,provider_status,operation_id) VALUES(?,?,?)',[$p['id'],$status,$operation]);
-    $eventId=Security::id();$body=['event_id'=>$eventId,'event_type'=>'payment.'.$status,'payment_id'=>$p['id'],'order_id'=>$order,'customer_id'=>$p['customer_id'],'amount_cents'=>(int)$p['amount_cents'],'currency'=>'EUR','environment'=>$env,'occurred_at'=>gmdate('c')];
+    $product=Db::one($db,'SELECT sku FROM products WHERE id=? AND application_id=?',
+      [$locked['product_id'],$locked['application_id']]);
+    $eventId=Security::id();$body=['event_id'=>$eventId,'event_type'=>'payment.'.$status,'payment_id'=>$p['id'],'order_id'=>$order,'customer_id'=>$p['customer_id'],'amount_cents'=>(int)$p['amount_cents'],'currency'=>'EUR',
+      'product_sku'=>$product['sku']??'',
+      'environment'=>$env,'occurred_at'=>gmdate('c')];
     if($mitCycle){
      $body['billing_origin']='automatic_renewal';
      $body['external_user_id']=(string)$mitCycle['external_user_id'];

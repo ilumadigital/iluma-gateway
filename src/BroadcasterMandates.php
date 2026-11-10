@@ -111,6 +111,19 @@ final class BroadcasterMandates {
   }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
   return self::status($credential,$body);
  }
+ /**
+  * A provider-confirmed failed/cancelled INITIAL HPP must release this one
+  * product/station mandate. Do not touch other station contracts, and never
+  * infer a failure from a timeout or an unknown provider status.
+  */
+ public static function markInitialFailed(\PDO $db,string $paymentId):void {
+  if(!self::schemaReady($db))return;
+  Db::exec($db,"UPDATE broadcaster_mandates
+    SET status='cancelled',cancelled_at=UTC_TIMESTAMP(),next_due_at=NULL,
+      last_error_code='INITIAL_PAYMENT_FAILED'
+    WHERE initial_payment_id=?
+      AND status IN ('pending','verification_pending')",[$paymentId]);
+ }
  public static function verifyPaid(string $env,string $paymentId):void {
   if($env!=='staging')return;
   $db=Db::get($env);

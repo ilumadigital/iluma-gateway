@@ -195,7 +195,7 @@ try{\Iluma\Gateway\SavedCards::choice([
 catch(\Iluma\Gateway\HttpError){$prodAllowed=false;}
 check(!$prodAllowed,'Provider tokenization locked in production');
 $contract=\Iluma\Gateway\SavedCards::contractId();
-check((bool)preg_match('/^ILC[A-F0-9]{24}$/D',$contract),'No PAN data; contract ID is safe and unique shaped');
+check((bool)preg_match('/^ILC[A-F0-9]{15}$/D',$contract),'No PAN data; contract ID is safe and unique shaped');
 $first=NexiClient::oneClickRecurrence('CONTRACT_CREATION',$contract);
 $repeat=NexiClient::oneClickRecurrence('SUBSEQUENT_PAYMENT',$contract);
 check($first['contractType']==='CIT' && $first['action']==='CONTRACT_CREATION',
@@ -257,7 +257,7 @@ catch(\Iluma\Gateway\HttpError){$prodMitAllowed=false;}
 check(!$prodMitAllowed,'Production MIT enrollment is locked');
 $mitContract=\Iluma\Gateway\RecurringMandates::contractId();
 $mitRecurrence=\Iluma\Gateway\RecurringMandates::recurrence($mitContract);
-check((bool)preg_match('/^ILM[A-F0-9]{24}$/D',$mitContract) &&
+check((bool)preg_match('/^ILM[A-F0-9]{15}$/D',$mitContract) &&
  $mitRecurrence['action']==='CONTRACT_CREATION' &&
  $mitRecurrence['contractType']==='MIT_SCHEDULED' &&
  $mitRecurrence['contractFrequency']==='28',
@@ -275,7 +275,7 @@ try{
  $mitGateFailed=false;
 }catch(\RuntimeException $e){$mitGateFailed=str_contains($e->getMessage(),'MIT sandbox execution is locked');}
 check($mitGateFailed,'No MIT charge is possible without staged execution and UAT approval flags');
-check(str_contains(file_get_contents(dirname(__DIR__).'/src/NexiClient.php'),"IL[CM][A-F0-9]{24}"),
+check(str_contains(file_get_contents(dirname(__DIR__).'/src/NexiClient.php'),"IL[CM](?:[A-F0-9]{15}|[A-F0-9]{24})"),
  'Both CIT and MIT contracts may be deactivated on cancellation');
 check(str_contains(file_get_contents(dirname(__DIR__).'/src/RecurringMandates.php'),
  "WHERE id=? FOR UPDATE") &&

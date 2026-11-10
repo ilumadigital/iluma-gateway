@@ -8,6 +8,48 @@ function check(bool $ok,string $name):void {global $tests;$tests++;if(!$ok){fwri
 $encoded=Security::encrypt('sensitive provider key');check($encoded!=='sensitive provider key'&&Security::decrypt($encoded)==='sensitive provider key','Sodium secretbox roundtrip');
 $canonical=Security::signature('secret','1783585200','00000000000000000000000000000000','POST','/api/v1/payments/checkout','{"id":1}');
 check(strlen($canonical)===64,'HMAC length');check($canonical!==Security::signature('secret','1783585200','00000000000000000000000000000000','POST','/api/v1/payments/checkout','{"id":2}'),'payload modification invalidates HMAC');
+
+$originalAppEnv=getenv('APP_ENV');
+putenv('APP_ENV=staging');
+$stationRef=str_repeat('a',24);
+$boostOrder=['resource_id'=>$stationRef,'auto_renew'=>false];
+check(\Iluma\Gateway\BroadcasterBoost::choice($boostOrder,'staging','BOOST-G-DAY','iradiosgr',2900)===$stationRef,
+ 'One-off Boost verifies fixed price and canonical station scope');
+$boostRejected=false;
+try{\Iluma\Gateway\BroadcasterBoost::choice(
+ ['resource_id'=>$stationRef,'auto_renew'=>true],'staging','BOOST-G-DAY','iradiosgr',2900);}
+catch(\Iluma\Gateway\HttpError){$boostRejected=true;}
+check($boostRejected,'One-off Boost refuses recurring MIT consent');
+$boostRejected=false;
+try{\Iluma\Gateway\BroadcasterBoost::choice($boostOrder,'staging','BOOST-G-DAY','iradiosgr',2990);}
+catch(\Iluma\Gateway\HttpError){$boostRejected=true;}
+check($boostRejected,'One-off Boost cannot be purchased at another catalog price');
+$accountConsent=['auto_renew'=>true,
+ 'recurring_consent_version'=>\Iluma\Gateway\BroadcasterMandates::CONSENT];
+check(\Iluma\Gateway\BroadcasterMandates::choice($accountConsent,'staging','B-PREM','iradiosgr',11900)==='B-PREM',
+ 'Broadcaster account Premium accepts explicit monthly consent');
+$addonConsent=$accountConsent+['resource_id'=>$stationRef];
+check(\Iluma\Gateway\BroadcasterMandates::choice($addonConsent,'staging','ADD-AN','iradiosgr',790)==='ADD-AN',
+ 'Station Analytics accepts independent recurring consent');
+$addonRejected=false;
+try{\Iluma\Gateway\BroadcasterMandates::choice(
+ ['auto_renew'=>true,'recurring_consent_version'=>\Iluma\Gateway\BroadcasterMandates::CONSENT],
+ 'staging','ADD-AN','iradiosgr',790);}
+catch(\Iluma\Gateway\HttpError){$addonRejected=true;}
+check($addonRejected,'Station add-on rejects missing station ID');
+$addonRejected=false;
+try{\Iluma\Gateway\BroadcasterMandates::choice(
+ $addonConsent,'staging','ADD-AN','iradiosgr',399);}
+catch(\Iluma\Gateway\HttpError){$addonRejected=true;}
+check($addonRejected,'Broadcaster recurring price cannot fall back to Listener Premium 3.99');
+check(\Iluma\Gateway\CheckoutReturn::url('staging','/checkout/result','IL'.str_repeat('A',24),'BOOST-G-DAY')===
+ 'https://stage.iradios.gr/backoffice/boost?gateway_return=result&order=IL'.str_repeat('A',24),
+ 'Boost HPP return targets Backoffice rather than Listener Premium');
+check(\Iluma\Gateway\CheckoutReturn::url('staging','/checkout/result','IL'.str_repeat('A',24),'B-PREM')===
+ 'https://stage.iradios.gr/backoffice/pro-features?gateway_return=result&order=IL'.str_repeat('A',24),
+ 'Broadcaster subscription HPP return targets Pro Features');
+if($originalAppEnv===false)putenv('APP_ENV');else putenv('APP_ENV='.$originalAppEnv);
+
 $valid=['orderStatus'=>['order'=>['orderId'=>'ILABC','amount'=>'499','currency'=>'EUR'],'capturedAmount'=>'499'], 'operations'=>[['orderId'=>'ILABC','operationId'=>'O123','operationType'=>'CAPTURE','operationAmount'=>'499','operationCurrency'=>'EUR','operationResult'=>'EXECUTED']]];
 check(PaymentState::fromNexi($valid,499,'ILABC')===['paid','O123'],'paid when captured and verified');
 check(PaymentState::fromNexi($valid,500,'ILABC')===['unknown',null],'mismatched amount is not paid');

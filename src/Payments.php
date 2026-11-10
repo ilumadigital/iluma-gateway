@@ -68,10 +68,10 @@ final class Payments {
     // of API keys, long IDs, URLs and multiline payloads by NexiClient.
     // Store ONLY bounded, allowlisted validation text in operator audit.
     $code=$matches[1];$description=(string)($matches[2]??'');
-    if(!preg_match('/^[\p{L}\p{N} .,:;_()\/\\-]{1,190}$/uD',$description))
+    if(!preg_match('/^[\p{L}\p{N} .,:;_()\/\[\]-]{1,190}$/uD',$description))
      $description='';
     $reason='Η Nexi απέρριψε τη δημιουργία checkout (HTTP '.$code.')'.
-     ($description!==''?' — '.mb_substr($description,0,150):'').
+     ($description!==''?' — '.$description:'').
      '. Δεν έγινε redirect. Ελέγξτε το Nexi Order με GET πριν από νέα δοκιμή.';
     if($code==='400'){
      self::log($db,$pid,'hpp_rejected_400',$reason);
@@ -114,12 +114,20 @@ final class Payments {
    // The first MIT mandate never became a provider contract.
    // Mark it cancelled and deactivated so it cannot block a later, new
    // opt-in. Financial event history is preserved for the rejected order.
-   Db::exec($db,"UPDATE recurring_mandates
+   // This reconciliation also supports older non-tokenized staging
+   // installs where the optional OneClick/MIT tables do not yet exist.
+   $mitTable=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
+     WHERE table_schema=DATABASE() AND table_name='recurring_mandates'");
+   if((int)($mitTable['n']??0)===1)
+    Db::exec($db,"UPDATE recurring_mandates
       SET status='cancelled',cancelled_at=UTC_TIMESTAMP(),
           deactivated_at=UTC_TIMESTAMP(),next_due_at=NULL,
           last_error_code='HPP_REJECTED_400'
       WHERE initial_payment_id=? AND status='pending'",[$p['id']]);
-   Db::exec($db,"UPDATE saved_card_agreements
+   $citTable=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
+     WHERE table_schema=DATABASE() AND table_name='saved_card_agreements'");
+   if((int)($citTable['n']??0)===1)
+    Db::exec($db,"UPDATE saved_card_agreements
       SET status='revoked',deactivated_at=UTC_TIMESTAMP()
       WHERE payment_id=? AND status='pending'",[$p['id']]);
    self::log($db,$p['id'],'failed','Η Nexi επέστρεψε HTTP 400 στο HPP και επιβεβαιώθηκε ότι το Order δεν υπάρχει (GET 404). Καμία νέα χρέωση.');

@@ -205,7 +205,19 @@ final class Payments {
       Db::exec($db,"UPDATE billing_cycles SET state=? WHERE id=? AND state='pending'",[$status,$locked['billing_cycle_id']]);
      }
     }
-    if($env==='staging' && $status==='paid')Winback::captured($db,$p['id']);
+    if($env==='staging'){
+     if($status==='paid')Winback::captured($db,$p['id']);
+     // A provider-confirmed declined/cancelled *initial* HPP must not
+     // permanently lock the listener out of a new consent or winback retry.
+     // Unknown status remains held for reconciliation, never released.
+     if(in_array($status,['failed','canceled'],true)){
+      Db::exec($db,"UPDATE recurring_mandates SET status='cancelled',
+       cancelled_at=UTC_TIMESTAMP(),next_due_at=NULL,
+       last_error_code='INITIAL_PAYMENT_FAILED'
+       WHERE initial_payment_id=? AND status IN ('pending','verification_pending')",
+       [$p['id']]);
+     }
+    }
     // For an automated cycle, correlate the exact Gateway account and
     // immutable provider payment before sending a signed iRadios event.
     // The migration is optional until staged rollout; old payments remain safe.

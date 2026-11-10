@@ -265,6 +265,7 @@ check((bool)preg_match('/^ILM[A-F0-9]{24}$/D',$mitContract) &&
 check(\Iluma\Gateway\RecurringMandates::monthAfter('2026-01-31 15:14:00')==='2026-02-28 15:14:00' &&
  \Iluma\Gateway\RecurringMandates::monthAfter('2027-02-28 15:14:00')==='2027-03-28 15:14:00',
  'Calendar-month clamp preserves February behavior');
+putenv('NEXI_STAGING_BASE=https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp');
 putenv('MIT_SANDBOX_EXECUTION_ENABLED=0');
 putenv('MIT_SANDBOX_UAT_APPROVED=0');
 try{

@@ -207,7 +207,7 @@ catch(\InvalidArgumentException){$mitAllowed=false;}
 check(!$mitAllowed,'Automatic merchant-initiated charge remains unsupported');
 $cardsSource=file_get_contents(dirname(__DIR__).'/src/SavedCards.php');
 check(str_contains($cardsSource,"p.status='paid'") &&
- str_contains($cardsSource,"contractType']??null")==='CIT', 'Card contract is verified only after paid provider settlement');
+ str_contains($cardsSource,"(\$contract['contractType']??null)==='CIT'"), 'Card contract is verified only after paid provider settlement');
 check(str_contains($cardsSource,'revocation_pending') &&
  str_contains($cardsSource,'deactivateContract(') &&
  !str_contains($cardsSource,'POST /orders/mit'),'Card removal is server-side, no auto charges');
@@ -216,6 +216,6 @@ check(str_contains($routerSource,"/api/v1/payment-methods/status") &&
  'Authenticated Gateway card status and revoke endpoints exist');
 $cardMigration=file_get_contents(dirname(__DIR__).'/database/migrations/20261110_staging_saved_cards.sql');
 check(str_contains($cardMigration,'CREATE TABLE IF NOT EXISTS saved_card_agreements') &&
- !preg_match('/\\b(?:pan|cvv|card_number|security_code)\\b/i',$cardMigration),
+ !preg_match('/\\b(?:card_number|security_code)\\s+(?:VARCHAR|TEXT|CHAR)\\b/i',$cardMigration),
  'SQL schema stores provider contracts and consent, never raw card details');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

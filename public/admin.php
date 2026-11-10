@@ -121,7 +121,8 @@ try {
   foreach(['Πληρωμές σήμερα'=>$stats['paid_today'],'Εισπράξεις σήμερα'=>euro((int)$stats['amount_today']),'Πληρωμές μήνα'=>$stats['paid_month'],'Εισπράξεις μήνα'=>euro((int)$stats['amount_month']),'Αποτυχημένες'=>$stats['failed'],'Ακυρωμένες'=>$stats['canceled']] as $label=>$value)$content.='<article class="stat"><small>'.html($label).'</small><strong>'.html((string)$value).'</strong></article>';
   $content.='<div class="clear"></div><p>Τα ποσά προέρχονται αποκλειστικά από το ενεργό περιβάλλον. Οι επιστροφές εμφανίζονται ξεχωριστά.</p>';
   $sub=Db::one($db,"SELECT COUNT(CASE WHEN state='active' THEN 1 END) active,COUNT(CASE WHEN state='past_due' THEN 1 END) past_due,COUNT(CASE WHEN next_billing_at>=UTC_TIMESTAMP() AND next_billing_at<DATE_ADD(UTC_TIMESTAMP(),INTERVAL 7 DAY) THEN 1 END) upcoming FROM subscriptions");
-  $content.='<p>Ενεργές συνδρομές: '.(int)$sub['active'].' · Ληξιπρόθεσμες: '.(int)$sub['past_due'].' · Ανανεώσεις 7ημέρου: '.(int)$sub['upcoming'].'</p>';
+  $content.='<p>Παλαιότερες συνδρομές: '.(int)$sub['active'].' ενεργές · '.(int)$sub['past_due'].' ληξιπρόθεσμες.</p>';
+  if($env==='staging')$content.=\Iluma\Gateway\RecurringAdmin::summary($db);
   $byProduct=Db::all($db,"SELECT pr.title,COUNT(*) paid_count,COALESCE(SUM(p.amount_cents),0) gross FROM payments p JOIN products pr ON pr.id=p.product_id WHERE p.status='paid' GROUP BY pr.id ORDER BY gross DESC LIMIT 15");
   $content.='<h2>Εισπράξεις ανά υπηρεσία</h2><table><tr><th>Προϊόν</th><th>Επιτυχείς πληρωμές</th><th>Ακαθάριστο ποσό</th></tr>';
   foreach($byProduct as $r)$content.='<tr><td>'.html($r['title']).'</td><td>'.(int)$r['paid_count'].'</td><td>'.euro((int)$r['gross']).'</td></tr>';
@@ -138,6 +139,10 @@ try {
  } elseif($p==='payment'){
   $id=(string)($_GET['id']??'');$row=Db::one($db,'SELECT p.*,c.email,pr.title FROM payments p JOIN customers c ON c.id=p.customer_id JOIN products pr ON pr.id=p.product_id WHERE p.id=?',[$id]);if(!$row)throw new HttpError(404,'Not found');
   foreach(['Payment ID'=>$row['id'],'Nexi Order ID'=>$row['order_id'],'Nexi Operation ID'=>$row['operation_id']??'—','Περιβάλλον'=>$env,'Πελάτης'=>$row['email'],'Προϊόν'=>$row['title'],'Κατάσταση'=>$row['status'],'Ποσό'=>euro((int)$row['amount_cents'])] as $label=>$value)$content.='<p><b>'.html($label).':</b> '.html((string)$value).'</p>';
+  if($env==='staging'){
+   $mandateId=\Iluma\Gateway\RecurringAdmin::byPayment($db,$id);
+   if($mandateId)$content.='<p><a href="/ilm-admin/?p=subscription&id='.html($mandateId).'">Προβολή συνδρομής Nexi MIT</a></p>';
+  }
   $logs=Db::all($db,'SELECT event_type,message_gr,occurred_at FROM payment_logs WHERE payment_id=? ORDER BY occurred_at,id',[$id]);
   $content.='<h2>Χρονολόγιο γεγονότων</h2><ol>';foreach($logs as $entry)$content.='<li><time>'.html(localDate($entry['occurred_at'])).'</time> — '.html($entry['message_gr']).'</li>';$content.='</ol>';
   $out=Db::all($db,'SELECT o.status,o.attempts,
@@ -157,9 +162,20 @@ try {
   $content.='<table><tr><th>Όνομα</th><th>Email</th><th>External User ID</th><th>Πληρωμές</th></tr>';
   foreach($rows as $r)$content.='<tr><td>'.html($r['name']).'</td><td>'.html($r['email']).'</td><td>'.html($r['external_user_id']).'</td><td>'.(int)$r['payments'].'</td></tr>';$content.='</table>';
  } elseif($p==='subscriptions'){
-  $rows=Db::all($db,'SELECT s.*,c.email,pr.title FROM subscriptions s JOIN customers c ON c.id=s.customer_id JOIN products pr ON pr.id=s.product_id ORDER BY s.created_at DESC LIMIT 100');
-  $content.='<table><tr><th>Πελάτης</th><th>Προϊόν</th><th>Κατάσταση</th><th>Auto Renewal</th><th>Επόμενη χρέωση</th></tr>';
-  foreach($rows as $r)$content.='<tr><td>'.html($r['email']).'</td><td>'.html($r['title']).'</td><td>'.html($r['state']).'</td><td>'.($r['auto_renew']?'Ναι':'Όχι').'</td><td>'.html($r['next_billing_at']??'—').'</td></tr>';$content.='</table>';
+  if($env==='staging')$content.=\Iluma\Gateway\RecurringAdmin::index($db,$reg,(string)($_GET['q']??''));
+  else $content.='<p>Η Nexi MIT recurring υπηρεσία δεν είναι ενεργή στο production.</p>';
+  $legacy=Db::all($db,"SELECT s.state,s.next_billing_at,c.email,pr.title
+   FROM subscriptions s JOIN customers c ON c.id=s.customer_id
+   JOIN products pr ON pr.id=s.product_id ORDER BY s.created_at DESC LIMIT 100");
+  if($legacy){
+   $content.='<h2>Παλαιότερες συνδρομές (legacy)</h2><table><tr><th>Πελάτης</th><th>Πλάνο</th><th>Κατάσταση</th><th>Επόμενη χρέωση</th></tr>';
+   foreach($legacy as $item)
+    $content.='<tr><td>'.html($item['email']).'</td><td>'.html($item['title']).'</td><td>'.html($item['state']).'</td><td>'.html($item['next_billing_at']?localDate($item['next_billing_at']):'—').'</td></tr>';
+   $content.='</table>';
+  }
+ } elseif($p==='subscription'){
+  if($env!=='staging')throw new HttpError(404,'Not found');
+  $content.=\Iluma\Gateway\RecurringAdmin::detail($db,$reg,(string)($_GET['id']??''));
  } elseif($p==='applications'){
   $apps=Db::all($reg,'SELECT * FROM applications');foreach($apps as $app)$content.='<article><h2>'.html($app['name']).'</h2><p>Staging: '.html($app['staging_origin']).'</p><p>Production: '.html($app['production_origin']).'</p></article>';
  } elseif($p==='keys'){
@@ -176,7 +192,7 @@ try {
  } elseif($p==='settings'){
   $content.='<p>Σύνδεση με email και password. Το Google Authenticator ζητείται για αλλαγές κλειδιών και εξαγωγή CSV, πριν εφαρμοστεί η ενέργεια.</p><p>Live transactions: '.(Config::liveAllowed()?'Ενεργοποίηση από runtime — απαιτείται ανεξάρτητος έλεγχος.':'ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΕΣ').'</p>';
  } else throw new HttpError(404,'Not found');
- page(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','payment'=>'Ανάλυση πληρωμής','settings'=>'Ρυθμίσεις'][$p]??'ILUMA',$content,$error,$notice);
+ page(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','payment'=>'Ανάλυση πληρωμής','subscription'=>'Ανάλυση Nexi MIT συνδρομής','settings'=>'Ρυθμίσεις'][$p]??'ILUMA',$content,$error,$notice);
 } catch(\Throwable $e){error_log('ILUMA admin '.get_class($e).': '.$e->getMessage());
  if(!empty($_SESSION['admin_id'])){
   if($e instanceof HttpError && $e->getMessage()==='MFA required')

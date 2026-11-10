@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS recurring_mandates (
  status ENUM('pending','active','cancelled','past_due','verification_pending') NOT NULL DEFAULT 'pending',
  paid_through_at DATETIME NULL,
  next_due_at DATETIME NULL,
+ anchor_day TINYINT UNSIGNED NULL,
  verified_at DATETIME NULL,
  cancelled_at DATETIME NULL,
  deactivated_at DATETIME NULL,

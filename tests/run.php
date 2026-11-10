@@ -48,6 +48,12 @@ check(\Iluma\Gateway\CheckoutReturn::url('staging','/checkout/result','IL'.str_r
 check(\Iluma\Gateway\CheckoutReturn::url('staging','/checkout/result','IL'.str_repeat('A',24),'B-PREM')===
  'https://stage.iradios.gr/backoffice/pro-features?gateway_return=result&order=IL'.str_repeat('A',24),
  'Broadcaster subscription HPP return targets Pro Features');
+$manageAuditSource=file_get_contents(dirname(__DIR__).'/bin/manage.php');
+check($manageAuditSource!==false&&
+ str_contains($manageAuditSource,"if(\$command==='audit-staging-broadcaster')")&&
+ str_contains($manageAuditSource,'BROADCASTER STAGING READINESS')&&
+ str_contains($manageAuditSource,"Config::get('APP_ENV')!=='staging'"),
+ 'Staging broadcaster migration and read-only readiness audit require explicit APP_ENV=staging');
 check(\Iluma\Gateway\RecurringMandates::monthAfter('2027-02-28 15:04:05',31)==='2027-03-31 15:04:05',
  'MIT renewals preserve January 31 billing anchor after February');
 check(\Iluma\Gateway\RecurringMandates::monthAfter('2028-02-29 15:04:05',31)==='2028-03-31 15:04:05',

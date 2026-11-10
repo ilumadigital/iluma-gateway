@@ -74,6 +74,26 @@ final class Payments {
   return ['payment_id'=>$p['id'],'order_id'=>$p['order_id'],'status'=>$p['status'],'amount_cents'=>(int)$p['amount_cents'],'currency'=>'EUR',
    'checkout_url'=>$p['status']==='redirect'?$p['hosted_page']:null];
  }
+ public static function history(array $credential,string $external):array {
+  if($credential['environment']!=='staging'||($credential['slug']??'')!=='iradiosgr'||
+     !preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
+   throw new HttpError(403,'STAGING_ONLY');
+  $db=Db::get('staging');
+  $rows=Db::all($db,"SELECT p.id AS payment_id,p.order_id,p.status,p.amount_cents,p.currency,
+    p.created_at,p.confirmed_at,pr.sku,pr.title
+    FROM payments p JOIN customers c ON c.id=p.customer_id
+    JOIN products pr ON pr.id=p.product_id
+    WHERE p.application_id=? AND c.application_id=? AND c.external_user_id=?
+    ORDER BY p.created_at DESC,p.id DESC LIMIT 60",
+    [(int)$credential['application_id'],(int)$credential['application_id'],$external]);
+  return ['payments'=>array_map(static fn($r)=>[
+   'id'=>(string)$r['payment_id'],'orderId'=>(string)$r['order_id'],
+   'sku'=>(string)$r['sku'],'title'=>(string)$r['title'],
+   'status'=>(string)$r['status'],'amountCents'=>(int)$r['amount_cents'],
+   'currency'=>(string)$r['currency'],'createdAt'=>(string)$r['created_at'].'Z',
+   'paidAt'=>$r['confirmed_at']?(string)$r['confirmed_at'].'Z':null
+  ],$rows)];
+ }
  public static function find(array $credential,string $id):array {
   $p=Db::one(Db::get($credential['environment']),'SELECT * FROM payments WHERE id=? AND application_id=?',[$id,(int)$credential['application_id']]);
   if(!$p)throw new HttpError(404,'Payment not found');return self::publicPayment($p);

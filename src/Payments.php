@@ -22,14 +22,14 @@ final class Payments {
   if($choice['save']){$canonical['save_card']=true;$canonical['card_consent_version']=$choice['version'];}
   if($choice['reuse'])$canonical['use_saved_card']=true;
   $hash=hash('sha256',Security::json($canonical));
-  // OneClick migration + consent eligibility are checked BEFORE a local
-  // payment exists; 422 is guaranteed NOT to have reached Nexi.
-  SavedCards::preflight($db,$application,$external,$choice);
   $recurrence=null;
   $db->beginTransaction();
   try{
    $existing=Db::one($db,'SELECT * FROM payments WHERE application_id=? AND request_key=? FOR UPDATE',[$application,$key]);
    if($existing){$db->commit();if(!hash_equals($existing['request_hash'],$hash))throw new HttpError(409,'Idempotency payload mismatch');return self::publicPayment($existing);}
+   // Preserve idempotency for an already-created payment before validating
+   // current stored-card state. New requests fail closed before any payment insert.
+   SavedCards::preflight($db,$application,$external,$choice);
    $customer=Db::one($db,'SELECT id FROM customers WHERE application_id=? AND external_user_id=? FOR UPDATE',[$application,$external]);
    if($customer){$cid=$customer['id'];Db::exec($db,'UPDATE customers SET email=?,name=? WHERE id=?',[$email,$name,$cid]);}
    else { $cid=Security::id();Db::exec($db,'INSERT INTO customers(id,application_id,external_user_id,email,name) VALUES(?,?,?,?,?)',[$cid,$application,$external,$email,$name]); }

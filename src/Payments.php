@@ -105,7 +105,11 @@ final class Payments {
     $db->rollBack();return false;
    }
    $rejected=Db::one($db,"SELECT id FROM payment_logs
-     WHERE payment_id=? AND event_type='hpp_rejected_400' LIMIT 1",[$p['id']]);
+     WHERE payment_id=?
+       AND (event_type='hpp_rejected_400'
+        OR (event_type='unknown' AND
+          message_gr LIKE 'Η Nexi απέρριψε τη δημιουργία checkout (HTTP 400)%'))
+     LIMIT 1",[$p['id']]);
    if(!$rejected){$db->rollBack();return false;}
    // Requiring a positive documented 404 from Nexi before calling this
    // is the worker's responsibility; no retry provider POST is ever made.

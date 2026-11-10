@@ -179,6 +179,8 @@ final class RecurringMandates {
      WHERE m.id=? FOR UPDATE",[$mandateId]);
     if(!$mandate||$mandate['status']!=='active'||$mandate['cancelled_at']!==null||
        !$mandate['verified_at']||!$mandate['next_due_at']||
+       !$mandate['paid_through_at']||
+       $mandate['next_due_at']!==$mandate['paid_through_at']||
        strtotime($mandate['next_due_at'].' UTC')>time()){$db->rollBack();continue;}
     // The provider's MIT_SCHEDULED contract was issued with frequency=28.
     // Never issue an early POST even if an operator backdates next_due_at.

@@ -232,3 +232,69 @@ Nexi notification or a reconciled result/cancel return. The durable outbox
 and scheduled cron are still required for Cloudflare/network retries. Neither
 mechanism initiates a new provider charge or grants account entitlements
 without iRadios' HMAC verification.
+
+
+## Nexi OneClick CIT — card-on-file staging sandbox only (2026-11-10)
+
+**OneClick CIT is NOT recurring MIT.** Nexi retains the encrypted payment
+instrument against its provider contract. ILUMA Gateway stores only a random
+merchant-issued `contract_id`, explicit consent version and timestamp,
+Nexi-confirmed contract status and the exact payment/customer correlation.
+Neither service stores PAN, expiry date or CVV. User-initiated CIT renewals
+still go through Nexi Hosted Payment Page (3DS can be requested). No automated
+renewal charge or MIT endpoint is enabled.
+
+### Install schema (Gateway Hostinger SSH, staging only)
+
+Deploy Gateway `main` and, from its project root, execute ONCE (idempotent):
+
+```bash
+/opt/alt/php84/usr/bin/php bin/manage.php migrate-staging-saved-cards
+/opt/alt/php84/usr/bin/php bin/work.php staging
+```
+
+Ensure `APP_ENV` is not production. This creates one isolated table in the
+**staging tenant**. Production tenant schema and billing states stay intact.
+A rollback requires revoking any active provider contracts first; do not drop
+financial/consent records just to undo a deployment.
+
+### Consent checkout
+
+1. iRadios sends `save_card:true` plus fixed
+   `card_consent_version:"iradios-stored-card-v1"` only after the subscriber
+   explicitly checks the opt-in. Unchecked creates an ordinary 3.99 EUR HPP
+   and never creates a contract.
+2. Gateway persists a `pending` consent scoped to the account,
+   application, staging environment and payment; Nexi HPP gets
+   `paymentSession.recurrence = {action:"CONTRACT_CREATION", contractId,
+   contractType:"CIT"}`.
+3. Only after captured `payment.paid` does Gateway call
+   `GET /contracts/customers/{providerCustomerId}` and validate the exact
+   CIT `contractId` before marking the stored method `active`.
+   A network timeout never confirms storage. Staging worker retries the
+   read-only verification; payment event delivery is independent.
+4. Subsequent payment: user must explicitly click "Pay with stored card".
+   Backend HMAC requests `use_saved_card:true`; Gateway selects an
+   existing verified, non-revoked CIT and starts a **new** Nexi HPP with
+   `action:"SUBSEQUENT_PAYMENT"` and the same contract. It still requires
+   user interaction and may require 3DS.
+5. `POST /api/v1/payment-methods/status` and `.../revoke` are HMAC
+   server-to-server routes scoped by Gateway application + external user.
+   Revocation disables future use immediately and attempts
+   `POST /contracts/{contractId}/deactivation` at Nexi; failures are retried
+   by staging worker. No browser sees the provider contract ID.
+
+### Acceptance test
+
+- No opt-in: successful normal HPP, saved card remains `none`.
+- Opt-in + sandbox card: HPP, provider paid, signed webhook, provider contract
+  verified and saved card transitions from `pending` to `active`.
+- New manual renewal with saved card: Nexi OneClick HPP asks for appropriate
+  authentication but not full card re-entry; paid event opens a new iRadios
+  subscription period only after signed webhook.
+- Revoke: state `revocation_pending` until Nexi acknowledges; after `revoked`,
+  subsequent CIT calls are denied. Do not auto-charge or infer a successful
+  provider deactivation from a timeout.
+- Keep `PRODUCTION_ENABLED=0`. A separate MIT mandate with pricing, interval,
+  cancellation, retry/dunning, tax and SCA review is necessary before automatic
+  charges may be enabled.

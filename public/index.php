@@ -36,8 +36,8 @@ try {
   if($foundEnv===null)throw new HttpError(404,'Order not found');
   // Server-to-server verification only; provider return itself cannot mark paid.
   try{Payments::reconcile($foundEnv,$order);}
-  catch(\\Throwable $e){error_log('Gateway hosted return reconciliation deferred');}
-  header('Location: '.\\Iluma\\Gateway\\CheckoutReturn::url($foundEnv,$path,$order),true,303);
+  catch(\Throwable $e){error_log('Gateway hosted return reconciliation deferred');}
+  header('Location: '.\Iluma\Gateway\CheckoutReturn::url($foundEnv,$path,$order),true,303);
   exit;
  }
  if(str_starts_with($path,'/api/v1/')){

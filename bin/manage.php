@@ -16,10 +16,7 @@ if($command==='migrate-staging-broadcaster'){
  $app=Db::one(Db::get('registry'),"SELECT id FROM applications WHERE slug='iradiosgr'");
  if(!$app)die("iRadios registry application missing\n");
  $products=\Iluma\Gateway\BroadcasterMandates::PRICE;
- $boost=['BOOST-T-DAY'=>490,'BOOST-T-WEEK'=>2990,'BOOST-T-2W'=>5490,
-  'BOOST-T-MONTH'=>9900,'BOOST-T-YEAR'=>89000,
-  'BOOST-G-DAY'=>2900,'BOOST-G-WEEK'=>17900,'BOOST-G-2W'=>34900,
-  'BOOST-G-MONTH'=>79900,'BOOST-G-YEAR'=>848900];
+ $boost=\Iluma\Gateway\BroadcasterBoost::PRICE;
  foreach(array_merge($products,$boost) as $sku=>$amount){
   \Iluma\Gateway\Db::exec($db,"INSERT INTO products
    (application_id,sku,title,amount_cents,currency,enabled)

@@ -113,9 +113,30 @@ final class Payments {
       Db::exec($db,"UPDATE billing_cycles SET state=? WHERE id=? AND state='pending'",[$status,$locked['billing_cycle_id']]);
      }
     }
+    // For an automated cycle, correlate the exact Gateway account and
+    // immutable provider payment before sending a signed iRadios event.
+    // The migration is optional until staged rollout; old payments remain safe.
+    $mitCycle=false;
+    if($env==='staging'){
+     $schema=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
+       WHERE table_schema=DATABASE() AND table_name='recurring_cycles'");
+     if((int)($schema['n']??0)===1){
+      $mitCycle=Db::one($db,"SELECT c.cycle_due_at,u.external_user_id
+        FROM recurring_cycles c
+        JOIN recurring_mandates m ON m.id=c.mandate_id
+        JOIN customers u ON u.id=m.customer_id
+        WHERE c.payment_id=? FOR UPDATE",[$p['id']]);
+      if($mitCycle)RecurringMandates::settleCycle($db,$p['id'],$status);
+     }
+    }
     self::log($db,$p['id'],$status,$status==='paid'?'Η Nexi επιβεβαίωσε επιτυχημένη πληρωμή.':($status==='failed'?'Η Nexi απέρριψε την πληρωμή.':'Η συναλλαγή ακυρώθηκε.'));
     Db::exec($db,'INSERT INTO payment_attempts(payment_id,provider_status,operation_id) VALUES(?,?,?)',[$p['id'],$status,$operation]);
     $eventId=Security::id();$body=['event_id'=>$eventId,'event_type'=>'payment.'.$status,'payment_id'=>$p['id'],'order_id'=>$order,'customer_id'=>$p['customer_id'],'amount_cents'=>(int)$p['amount_cents'],'currency'=>'EUR','environment'=>$env,'occurred_at'=>gmdate('c')];
+    if($mitCycle){
+     $body['billing_origin']='automatic_renewal';
+     $body['external_user_id']=(string)$mitCycle['external_user_id'];
+     $body['cycle_due_at']=gmdate('c',strtotime((string)$mitCycle['cycle_due_at'].' UTC'));
+    }
     Db::exec($db,"INSERT IGNORE INTO outgoing_events(id,payment_id,application_id,event_type,body_json) VALUES(?,?,?,?,?)",[$eventId,$p['id'],$p['application_id'],'payment.'.$status,Security::json($body)]);
    }
    $db->commit();

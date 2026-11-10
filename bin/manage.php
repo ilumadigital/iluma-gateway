@@ -4,6 +4,30 @@ require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Db,Security};
 if(PHP_SAPI!=='cli')exit(1);
 $command=$argv[1]??'';
+if($command==='oneclick-doctor-staging'){
+ if(\Iluma\Gateway\Config::get('APP_ENV')==='production')
+  die("Staging diagnostic cannot run in production\n");
+ $db=Db::get('staging');
+ $table=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
+   WHERE table_schema=DATABASE() AND table_name='saved_card_agreements'");
+ $ready=(int)($table['n']??0)===1;
+ echo 'ONECLICK STAGING SCHEMA: '.($ready?'READY':'MISSING - run migration')."\n";
+ if($ready){
+  $counts=Db::all($db,'SELECT status,COUNT(*) AS n FROM saved_card_agreements GROUP BY status');
+  foreach($counts as $row)
+   echo 'CARD AGREEMENTS '.strtoupper((string)$row['status']).': '.(int)$row['n']."\n";
+ }
+ $app=Db::one(Db::get('registry'),"SELECT id FROM applications WHERE slug='iradiosgr'");
+ if($app){
+  $orders=Db::all($db,"SELECT order_id,status FROM payments
+    WHERE application_id=? AND created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 12 HOUR)
+    ORDER BY created_at DESC LIMIT 8",[(int)$app['id']]);
+  foreach($orders as $row)
+   echo 'RECENT IRADIOS ORDER '.(string)$row['order_id'].': '.(string)$row['status']."\n";
+ }
+ echo "No keys, tokens, customer emails or card data printed.\n";
+ exit;
+}
 if($command==='migrate-staging-saved-cards'){
  if(\Iluma\Gateway\Config::get('APP_ENV')==='production')die("Cannot migrate from a production runtime\n");
  $db=Db::get('staging');
@@ -88,4 +112,4 @@ if($command==='product'){
  Db::exec($db,'INSERT INTO products(application_id,sku,title,amount_cents) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title)',[$app['id'],$sku,$sku,$cents]);
  echo "Product registered. Existing prices NEVER auto-changed.\n";exit;
 }
-echo "Commands: migrate-staging-saved-cards | doctor | create-admin email | create-key staging|production | product staging|production sku cents | sandbox-subscription staging test-ref | sandbox-subscription-status staging test-ref\n";
+echo "Commands: oneclick-doctor-staging | migrate-staging-saved-cards | doctor | create-admin email | create-key staging|production | product staging|production sku cents | sandbox-subscription staging test-ref | sandbox-subscription-status staging test-ref\n";

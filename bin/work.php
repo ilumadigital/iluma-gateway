@@ -13,4 +13,7 @@ Worker::deliver($env);
 Worker::reconcile($env);
 // Dispatch newly confirmed events discovered during reconciliation as well.
 Worker::deliver($env);
+// Tokenization verification/revocation has NO ability to create a payment.
+\Iluma\Gateway\SavedCards::syncPending($env,10);
+\Iluma\Gateway\SavedCards::processRevocations($env,10);
 Db::exec(Db::get('registry'),'DELETE FROM api_nonces WHERE expires_at<UTC_TIMESTAMP()');

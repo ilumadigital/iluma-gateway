@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
-use Iluma\Gateway\{Config,Db,Security,Http,HttpError,Payments};
+use Iluma\Gateway\{Config,Db,Security,Http,HttpError,Payments,Worker};
 header('X-Content-Type-Options: nosniff');header('Referrer-Policy: no-referrer');header('Cache-Control: no-store');
 header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
 try {
@@ -13,12 +13,19 @@ try {
   $raw=file_get_contents('php://input');$body=Security::jsonRequest($raw);
   $order=(string)($body['operation']['orderId']??'');$token=(string)($body['securityToken']??'');
   if(!preg_match('/^IL[A-F0-9]{24}$/D',$order) || $token==='')throw new HttpError(400,'Invalid notification');
-  $db=Db::get($env);$payment=Db::one($db,'SELECT security_token_box FROM payments WHERE order_id=?',[$order]);
+  $db=Db::get($env);$payment=Db::one($db,'SELECT id,security_token_box FROM payments WHERE order_id=?',[$order]);
   if(!$payment||!$payment['security_token_box']||!hash_equals(Security::decrypt($payment['security_token_box']),$token)) throw new HttpError(401,'Notification not verified');
   $eventId=hash('sha256',$raw);
   Db::exec($db,'INSERT IGNORE INTO webhook_events(id,order_id,verified) VALUES(?,?,1)',[$eventId,$order]);
   // Provider lookup, not browser claim or notification body, determines financial state.
   $state=Payments::reconcile($env,$order);
+  // After provider-confirmed paid, attempt to deliver the already-persisted
+  // signed outbox event immediately. If the recipient is temporarily offline
+  // or Cloudflare blocks it, leave it pending for the scheduled worker.
+  if($state==='paid'){
+   try{Worker::deliverPayment($env,(string)$payment['id']);}
+   catch(\Throwable $e){error_log('Gateway payment webhook deferred to outbox worker');}
+  }
   Http::respond(['received'=>true,'state'=>$state]);
  }
  if($method==='GET' && in_array($path,['/checkout/result','/checkout/cancel'],true)) {
@@ -26,17 +33,21 @@ try {
   // Nexi does not need access to the iRadios session or its JWT.
   $order=(string)($_GET['order']??'');
   if(!preg_match('/^IL[A-F0-9]{24}$/D',$order))throw new HttpError(400,'Invalid order');
-  $foundEnv=null;
+  $foundEnv=null;$foundPaymentId=null;
   foreach(['staging','production'] as $candidate){
    if($candidate==='production'&&!Config::liveAllowed())continue;
    $found=Db::one(Db::get($candidate),
     'SELECT id FROM payments WHERE order_id=?',[$order]);
-   if($found){$foundEnv=$candidate;break;}
+   if($found){$foundEnv=$candidate;$foundPaymentId=(string)$found['id'];break;}
   }
   if($foundEnv===null)throw new HttpError(404,'Order not found');
   // Server-to-server verification only; provider return itself cannot mark paid.
-  try{Payments::reconcile($foundEnv,$order);}
-  catch(\Throwable $e){error_log('Gateway hosted return reconciliation deferred');}
+  try{
+   $state=Payments::reconcile($foundEnv,$order);
+   // A signed Nexi browser return is NOT payment authorization. This sends
+   // only an existing outbox event after authoritative provider reconciliation.
+   if($state==='paid')Worker::deliverPayment($foundEnv,$foundPaymentId);
+  }catch(\Throwable $e){error_log('Gateway hosted return reconciliation or delivery deferred');}
   header('Location: '.\Iluma\Gateway\CheckoutReturn::url($foundEnv,$path,$order),true,303);
   exit;
  }

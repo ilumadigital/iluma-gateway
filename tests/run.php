@@ -309,7 +309,8 @@ $paymentSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
 $workerSource=file_get_contents(dirname(__DIR__).'/src/Worker.php');
 check(str_contains($paymentSource,"'hpp_rejected_400'") &&
  str_contains($paymentSource,'reconcileRejectedHpp404(') &&
- str_contains($paymentSource,"WHERE payment_id=? AND event_type='hpp_rejected_400'") &&
+ str_contains($paymentSource,"event_type='hpp_rejected_400'") &&
+ str_contains($paymentSource,"message_gr LIKE 'Η Nexi απέρριψε τη δημιουργία checkout (HTTP 400)%'") &&
  str_contains($paymentSource,"$" . "p['status']!=='unknown'"),
  'Gateway never releases a rejected checkout without the exact 400 marker and unknown status');
 check(str_contains($workerSource,"str_starts_with($" . "e->getMessage(),'Nexi status 404 ')") &&

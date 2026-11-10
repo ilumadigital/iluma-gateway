@@ -154,14 +154,25 @@ final class BroadcasterMandates {
  }
  public static function eventScope(\PDO $db,string $paymentId):?array {
   if(!self::schemaReady($db))return null;
-  $cycle=Db::one($db,"SELECT c.cycle_due_at,m.sku,m.resource_id,u.external_user_id
+  $cycle=Db::one($db,"SELECT c.cycle_due_at,m.sku,m.resource_id,m.anchor_day,u.external_user_id
    FROM broadcaster_cycles c
    JOIN broadcaster_mandates m ON m.id=c.mandate_id
    JOIN customers u ON u.id=m.customer_id
    WHERE c.payment_id=? FOR UPDATE",[$paymentId]);
-  if($cycle)return ['sku'=>$cycle['sku'],'resource_id'=>$cycle['resource_id'],
+  if($cycle){
+   $anchor=(int)($cycle['anchor_day']??0);
+   if($anchor<1||$anchor>31)
+    throw new \RuntimeException('Unverified broadcaster MIT anchor');
+   // Sign both boundaries from the IMMUTABLE reserved cycle, not webhook
+   // arrival time. A January 31 anchor must renew Feb 28 -> March 31.
+   $periodEnd=RecurringMandates::monthAfter((string)$cycle['cycle_due_at'],$anchor);
+   return ['sku'=>$cycle['sku'],'resource_id'=>$cycle['resource_id'],
     'external_user_id'=>$cycle['external_user_id'],
-    'billing_origin'=>'automatic_renewal','cycle_due_at'=>gmdate('c',strtotime($cycle['cycle_due_at'].' UTC'))];
+    'billing_origin'=>'automatic_renewal',
+    'anchor_day'=>$anchor,
+    'cycle_due_at'=>gmdate('c',strtotime($cycle['cycle_due_at'].' UTC')),
+    'period_ends_at'=>gmdate('c',strtotime($periodEnd.' UTC'))];
+  }
   $initial=Db::one($db,"SELECT m.sku,m.resource_id
    FROM broadcaster_mandates m WHERE m.initial_payment_id=? FOR UPDATE",[$paymentId]);
   return $initial?['sku'=>$initial['sku'],'resource_id'=>$initial['resource_id']]:null;

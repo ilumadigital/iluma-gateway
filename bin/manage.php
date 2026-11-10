@@ -4,6 +4,16 @@ require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Db,Security};
 if(PHP_SAPI!=='cli')exit(1);
 $command=$argv[1]??'';
+if($command==='migrate-staging-recurring'){
+ if(\Iluma\Gateway\Config::get('APP_ENV')==='production')die("STAGING ONLY\n");
+ $db=Db::get('staging');
+ $sql=file_get_contents(dirname(__DIR__).'/database/migrations/20261110_staging_recurring_mit.sql');
+ if($sql===false)die("Missing migration\n");
+ foreach(array_filter(array_map('trim',explode(';',$sql))) as $stmt){
+   if(preg_match('/CREATE TABLE IF NOT EXISTS/i',$stmt))$db->exec($stmt);
+ }
+ echo "STAGING MIT mandate schema ready. No charge started.\n";exit;
+}
 if($command==='oneclick-doctor-staging'){
  if(\Iluma\Gateway\Config::get('APP_ENV')==='production')
   die("Staging diagnostic cannot run in production\n");

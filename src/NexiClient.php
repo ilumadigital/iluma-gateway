@@ -59,6 +59,17 @@ final class NexiClient {
   if(!$r) throw new HttpError(503,'Nexi credentials not configured');
   return new self($env,Security::decrypt($r['secret_box']));
  }
+ /**
+  * iRadios customer references (e.g. "iradios-stage-" + Mongo ObjectId)
+  * exceed XPay's 27-character order.customerId limit. Keep the exact
+  * reference in the Gateway customer ledger; send only a stable, opaque,
+  * 26-character merchant identifier to the provider. Hex + letters is
+  * accepted by XPay and avoids embedding account IDs or emails in HPP.
+  */
+ public static function providerCustomerId(string $customerRef): string {
+  if($customerRef==='' || strlen($customerRef)>190)throw new \InvalidArgumentException('Invalid customer reference');
+  return 'IR'.strtoupper(substr(hash('sha256',$customerRef),0,24));
+ }
  public function startCheckout(string $orderId,int $amount,string $customerRef,?array $recurrence=null): array {
   $session=['actionType'=>'PAY','amount'=>(string)$amount,'paymentService'=>'CARDS',
    // Required by XPay Greece POST /orders/hpp (ISO 639-2); without it the
@@ -71,7 +82,7 @@ final class NexiClient {
   // defaults to EXPLICIT. No change to Production capture behavior.
   if($this->environment==='staging')$session['captureType']='IMPLICIT';
   if($recurrence!==null) $session['recurrence']=$recurrence;
-  return $this->request('POST','/api/v1/orders/hpp',['order'=>['orderId'=>$orderId,'amount'=>(string)$amount,'currency'=>'EUR','customerId'=>$customerRef],'paymentSession'=>$session]);
+  return $this->request('POST','/api/v1/orders/hpp',['order'=>['orderId'=>$orderId,'amount'=>(string)$amount,'currency'=>'EUR','customerId'=>self::providerCustomerId($customerRef)],'paymentSession'=>$session]);
  }
  public function contractsForCustomer(string $customerId):array {
   if(!preg_match('/^[A-Za-z0-9._-]{1,190}$/D',$customerId))throw new \InvalidArgumentException('Invalid customer id');

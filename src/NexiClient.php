@@ -93,7 +93,7 @@ final class NexiClient {
   return $this->request('POST','/api/v1/orders/hpp',['order'=>['orderId'=>$orderId,'amount'=>(string)$amount,'currency'=>'EUR','customerId'=>self::providerCustomerId($customerRef)],'paymentSession'=>$session]);
  }
  public function deactivateContract(string $contractId):array {
-  if(!preg_match('/^ILC[A-F0-9]{24}$/D',$contractId))
+  if(!preg_match('/^IL[CM][A-F0-9]{24}$/D',$contractId))
    throw new \InvalidArgumentException('Invalid provider contract');
   return $this->request('POST','/api/v1/contracts/'.$contractId.'/deactivation');
  }

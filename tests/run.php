@@ -231,6 +231,6 @@ check(str_contains($savedCardsSource,"table_name='saved_card_agreements'") &&
  str_contains($savedCardsSource,"throw new HttpError(422,'SAVED_CARD_NOT_AVAILABLE')"),
  'Missing OneClick migration or absent card fails 422 before any Nexi request');
 check(str_contains($savedCardsSource,"SAVED_CARD_EXISTS_OR_PENDING") &&
- str_contains($savedCardsSource,"if(!$choice['save']&&!$choice['reuse'])return;"),
+ str_contains($savedCardsSource,'if(!$choice[\'save\']&&!$choice[\'reuse\'])return;'),
  'Ordinary card checkout remains available without OneClick migration');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

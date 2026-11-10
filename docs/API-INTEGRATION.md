@@ -78,6 +78,17 @@ An `unknown` status means a provider request may or may not have succeeded. **Do
 
 `GET /api/v1/payments/{payment_id}` returns the stored state (`pending`, `redirect`, `unknown`, `paid`, `failed`, `canceled`). For production enablement, validate all statuses and provider operation type/capture behavior with the actual merchant contract.
 
+## Read-only recovery after uncertain checkout response
+
+If an iRadios backend process loses the initial checkout response before saving
+`payment_id`, it MUST NOT create a replacement payment. It may call the signed,
+authenticated endpoint `GET /api/v1/payments/by-request-key/{original-idempotency-key}`
+with a fresh nonce and exactly the same application/environment credential.
+This returns the existing payment representation or 404 when no matching
+Gateway record is present. A 404 does **not** prove the original provider
+attempt was never executed; keep the local intent locked for manual review.
+The lookup does not call Nexi or create any new payment.
+
 ## Outgoing events → iRadios
 
 The worker POSTs a JSON message to a fixed, environment-specific backend URL. The payload contains `event_id`, `event_type`, `payment_id`, `order_id`, `external_user_id`, `product_sku`, `amount_cents`, `currency`, `environment`, and `occurred_at`. The worker adds `X-Iluma-Timestamp`, `X-Iluma-Nonce`, `X-Iluma-Signature`, `X-Iluma-Event-Id`. The signature canonicalization matches inbound signature protocol, except the path is the **iRadios webhook endpoint path**. The same active environment secret is used (separate signing secrets recommended before production).

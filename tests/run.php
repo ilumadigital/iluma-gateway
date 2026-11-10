@@ -115,4 +115,13 @@ $errBody=Security::json(['errors'=>[['code'=>'GW0001','description'=>'Incorrect 
 $errSummary=NexiClient::errorSummary($errBody,'test-private-key');
 check(!str_contains($errSummary,'example.net')&&!str_contains($errSummary,'test-private-key') && str_contains($errSummary,'GW0001'),'Provider errors redact urls and configured key');
 check(NexiClient::errorSummary('not a json','key')==='','Malformed provider error is never dumped');
+$paymentsSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
+$routerSource=file_get_contents(dirname(__DIR__).'/public/index.php');
+check(str_contains($paymentsSource,'function findByRequestKey(') &&
+ str_contains($paymentsSource,'WHERE application_id=? AND request_key=?') &&
+ !str_contains(substr($paymentsSource,strpos($paymentsSource,'function findByRequestKey('),500),'startCheckout('),
+ 'Signed recovery uses scoped SELECT and never creates provider checkout');
+check(str_contains($routerSource,'Payments::findByRequestKey($credential,') &&
+ str_contains($routerSource,"/api/v1/payments/by-request-key/"),
+ 'Recovery route uses the already authenticated gateway credential');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

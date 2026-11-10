@@ -34,6 +34,11 @@ try {
    $result=Payments::checkout($credential,$body,$headers['idempotency-key']??'');
    Http::respond($result,$result['status']==='redirect'?201:202);
   }
+  // Signed, read-only recovery for a lost initial checkout response.
+  // Never starts a second provider payment; scoped to the calling application.
+  if($method==='GET' && preg_match('#^/api/v1/payments/by-request-key/([A-Za-z0-9._:-]{1,128})$#D',$path,$m)){
+   Http::respond(Payments::findByRequestKey($credential,$m[1]));
+  }
   if($method==='GET' && preg_match('#^/api/v1/payments/([a-f0-9]{32})$#D',$path,$m)){
    Http::respond(Payments::find($credential,$m[1]));
   }

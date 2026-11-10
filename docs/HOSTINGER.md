@@ -99,6 +99,53 @@ a PCI scope assessment remain prerequisites.
 - Set an optional VPN or Zero Trust gate around /ilm-admin* if available for extra protection.
 - The root path / and direct /public/admin.php must stay 404. No new DNS subdomain is required.
 
+## HTTP Internal server error — safe first-line checks
+
+The PHP bootstrap / API intentionally hides stack traces from public responses.
+If you see **Internal server error**, do not change the master encryption key,
+recreate customers/payments, enable live payments or repeat a Nexi checkout.
+
+From the deployed **main** source directory in a private Hostinger SSH shell:
+
+```bash
+php -v
+php -l public/admin.php
+php -l public/index.php
+php -l src/EnvLoader.php
+php bin/manage.php doctor-http
+php tests/run.php
+```
+
+`doctor-http` prints only PHP extension, env-file access, session directory,
+staging/registry database and schema **status**. It does **not** show API keys,
+DB passwords, file paths, hostnames, customer records or payment data, and does
+not contact Nexi. If a check fails, inspect the **private Hostinger PHP error
+log** for the exact exception. Do not publish unredacted stack traces.
+
+The private env parser is strict. If you set the optional sandbox renewal flags,
+use only these exact names (both flags for each product must be `0` until UAT):
+
+```env
+MIT_SANDBOX_EXECUTION_ENABLED=0
+MIT_SANDBOX_UAT_APPROVED=0
+BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED=0
+BROADCASTER_MIT_SANDBOX_UAT_APPROVED=0
+```
+
+After a source deployment, the **staging** Broadcaster tables are separate and
+must be installed explicitly only on the staging database, before starting
+Broadcaster checkout. Never run the migration against production:
+
+```bash
+php bin/manage.php migrate-staging-broadcaster
+php bin/manage.php audit-staging-broadcaster
+```
+
+`APP_ENV=staging` is required for those two commands; if your shared gateway
+uses `APP_ENV=development` or `production`, do not override it on a live
+application process to work around the guard. Use an isolated staging runtime.
+Invoice/receipt issuance and AADE/myDATA reporting are handled **manually by ILUMA**.
+
 ## When CLI doctor prints nothing or admin returns 500
 
 Run the following inside the deployed project directory:

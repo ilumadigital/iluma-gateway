@@ -4,6 +4,111 @@ require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Db,Security};
 if(PHP_SAPI!=='cli')exit(1);
 $command=$argv[1]??'';
+if($command==='doctor-http'){
+ // Safe Hostinger diagnosis for /ilm-admin and API 500/503. Read-only.
+ // Never prints credentials, connection strings, domain filesystem paths,
+ // customer identities or provider tokens, and makes no HTTP/provider calls.
+ $checks=[];$run=static function(string $label,callable $check) use (&$checks):void {
+  try{$ok=$check();$checks[$label]=$ok===true?'OK':'NOT_READY';}
+  catch(\Throwable $e){
+   $checks[$label]='FAILED'; // Details go only to restricted PHP logs.
+   error_log('ILUMA doctor-http '.$label.' '.get_class($e));
+  }
+ };
+ $checks['PHP_8_3_OR_NEWER']=PHP_VERSION_ID>=80300?'OK':'FAILED';
+ foreach(['pdo_mysql','sodium','curl','openssl','json'] as $ext)
+  $checks['PHP_EXT_'.strtoupper($ext)]=extension_loaded($ext)?'OK':'FAILED';
+ $run('GATEWAY_HOST',static fn():bool=>
+  \Iluma\Gateway\Config::get('GATEWAY_HOST')==='gateway.iluma.gr');
+ $run('PRODUCTION_LOCK',static fn():bool=>!\Iluma\Gateway\Config::liveAllowed());
+ $run('BROADCASTER_MIT_LOCK',static fn():bool=>
+  \Iluma\Gateway\Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')!=='1'
+  ||\Iluma\Gateway\Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')!=='1');
+ $run('PRIVATE_ENV_ACCESS',static function():bool {
+  $file=\Iluma\Gateway\EnvLoader::privateFilePath(dirname(__DIR__));
+  return is_file($file)&&is_readable($file)&&
+   !is_link($file)&&((fileperms($file)&0077)===0);
+ });
+ $run('ADMIN_SESSION_STORAGE',static function():bool {
+  $save=session_save_path();
+  return $save===''||is_dir($save)&&is_writable($save);
+ });
+ $run('REGISTRY_DATABASE',static fn():bool=>
+  (int)(Db::one(Db::get('registry'),'SELECT 1 AS ok')['ok']??0)===1);
+ $run('STAGING_DATABASE',static fn():bool=>
+  (int)(Db::one(Db::get('staging'),'SELECT 1 AS ok')['ok']??0)===1);
+ $run('STAGING_BILLING_BASE',static function():bool{
+  $r=Db::one(Db::get('staging'),"SELECT COUNT(*) AS n FROM information_schema.tables
+   WHERE table_schema=DATABASE() AND table_name IN ('payments','customers','products','outgoing_events')");
+  return (int)($r['n']??0)===4;
+ });
+ $run('STAGING_BROADCASTER_SCHEMA',static function():bool{
+  $r=Db::one(Db::get('staging'),"SELECT COUNT(*) AS n FROM information_schema.tables
+   WHERE table_schema=DATABASE() AND table_name IN
+     ('broadcaster_mandates','broadcaster_cycles','broadcaster_boost_scopes')");
+  return (int)($r['n']??0)===3;
+ });
+ foreach($checks as $label=>$result)echo $label.': '.$result."\n";
+ echo "DOCTOR: READ-ONLY; NO NEXI CALLS OR CHARGES\n";
+ $exitCode=in_array('FAILED',$checks,true)?2:
+   (in_array('NOT_READY',$checks,true)?1:0);
+ exit($exitCode);
+}
+if($command==='audit-staging-broadcaster'){
+ // Read-only readiness check. No HPP/MIT POST, no customer data, no secrets.
+ if(\Iluma\Gateway\Config::get('APP_ENV')!=='staging')die("STAGING ONLY\n");
+ $db=Db::get('staging');
+ $tables=Db::all($db,"SELECT table_name AS name FROM information_schema.tables
+  WHERE table_schema=DATABASE() AND table_name IN
+   ('broadcaster_mandates','broadcaster_cycles','broadcaster_boost_scopes')");
+ $found=array_column($tables,'name');
+ $missing=[];
+ foreach(['broadcaster_mandates','broadcaster_cycles','broadcaster_boost_scopes'] as $name)
+  if(!in_array($name,$found,true))$missing[]=$name;
+ $app=Db::one(Db::get('registry'),"SELECT id FROM applications WHERE slug='iradiosgr'");
+ if(!$app)$missing[]='registry:iradiosgr';
+ $items=array_merge(\Iluma\Gateway\BroadcasterMandates::PRICE,\Iluma\Gateway\BroadcasterBoost::PRICE);
+ if($app)foreach($items as $sku=>$amount){
+  $row=Db::one($db,"SELECT amount_cents,currency,enabled
+   FROM products WHERE application_id=? AND sku=?",[(int)$app['id'],$sku]);
+  if(!$row||(int)$row['amount_cents']!==$amount||
+     $row['currency']!=='EUR'||(int)$row['enabled']!==1)$missing[]='catalog:'.$sku;
+ }
+ $ready=$missing===[]?'READY':'NOT_READY';
+ echo "BROADCASTER STAGING READINESS: ".$ready."\n";
+ echo "PRODUCTS EXPECTED: ".count($items)."\n";
+ echo "BROADCASTER MIT EXECUTION: ".
+  (\Iluma\Gateway\Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
+   \Iluma\Gateway\Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1'
+    ?'ENABLED BY RUNTIME':'LOCKED (DEFAULT SAFE)')."\n";
+ if($missing)echo "MISSING/INVALID: ".implode(', ',$missing)."\n";
+ exit($missing?1:0);
+}
+if($command==='migrate-staging-broadcaster'){
+ if(\Iluma\Gateway\Config::get('APP_ENV')!=='staging')die("STAGING ONLY\n");
+ $db=Db::get('staging');
+ $file=dirname(__DIR__).'/database/migrations/20261111_broadcaster_recurring.sql';
+ $sql=file_get_contents($file);
+ if($sql===false)die("Migration file missing\n");
+ $sql=preg_replace('/^\s*--[^\r\n]*$/m','',$sql);
+ foreach(array_filter(array_map('trim',explode(';',$sql))) as $stmt)
+  if(preg_match('/^CREATE TABLE IF NOT EXISTS/i',$stmt))$db->exec($stmt);
+ $app=Db::one(Db::get('registry'),"SELECT id FROM applications WHERE slug='iradiosgr'");
+ if(!$app)die("iRadios registry application missing\n");
+ $products=\Iluma\Gateway\BroadcasterMandates::PRICE;
+ $boost=\Iluma\Gateway\BroadcasterBoost::PRICE;
+ foreach(array_merge($products,$boost) as $sku=>$amount){
+  \Iluma\Gateway\Db::exec($db,"INSERT INTO products
+   (application_id,sku,title,amount_cents,currency,enabled)
+   VALUES(?,?,?,?,'EUR',1)
+   ON DUPLICATE KEY UPDATE title=VALUES(title),amount_cents=VALUES(amount_cents),
+    currency=VALUES(currency),enabled=1",
+   [(int)$app['id'],$sku,$sku,$amount]);
+ }
+ echo "STAGING broadcaster catalog and MIT tables ready; zero charges executed.\n";
+ exit;
+}
+
 if($command==='migrate-staging-winback'){
  if(\Iluma\Gateway\Config::get('APP_ENV')==='production')die("STAGING ONLY\n");
  $db=Db::get('staging');

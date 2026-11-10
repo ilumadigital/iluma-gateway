@@ -16,9 +16,12 @@ Worker::deliver($env);
 // Tokenization verification/revocation has NO ability to create a payment.
 \Iluma\Gateway\RecurringMandates::pendingVerification($env,10);
 \Iluma\Gateway\RecurringMandates::pendingDeactivation($env,10);
+\Iluma\Gateway\BroadcasterMandates::pendingVerification($env,10);
+\Iluma\Gateway\BroadcasterMandates::pendingDeactivation($env,10);
 // One-shot provider MIT is fully disabled unless BOTH staging rollout flags
 // have been explicitly enabled after real sandbox UAT. No live MIT path.
 \Iluma\Gateway\RecurringMandates::chargeDue($env,5);
+\Iluma\Gateway\BroadcasterMandates::chargeDue($env,5);
 Worker::deliver($env);
 \Iluma\Gateway\SavedCards::syncPending($env,10);
 \Iluma\Gateway\SavedCards::processRevocations($env,10);

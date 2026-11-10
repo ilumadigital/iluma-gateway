@@ -19,6 +19,7 @@ final class Payments {
   if(isset($request['currency']) && $request['currency']!=='EUR')throw new HttpError(422,'Unsupported currency');
   $choice=SavedCards::choice($request,$env,$sku,(string)$credential['slug']);
   // Broadcaster mandates are isolated from the single-Listener contract.
+  $boostStation=BroadcasterBoost::choice($request,$env,$sku,(string)$credential['slug'],(int)$product['amount_cents']);
   $bSku=BroadcasterMandates::choice($request,$env,$sku,(string)$credential['slug'],(int)$product['amount_cents']);
   $bResource=$bSku!==null?BroadcasterMandates::resource($sku,$request['resource_id']??null):null;
   $recurring=$bSku===null
@@ -32,6 +33,7 @@ final class Payments {
   if($choice['reuse'])$canonical['use_saved_card']=true;
   if($recurring){$canonical['auto_renew']=true;
     $canonical['recurring_consent_version']=RecurringMandates::CONSENT;}
+  if($boostStation!==null)$canonical['resource_id']=$boostStation;
   if($bSku!==null){
    $canonical['auto_renew']=true;
    $canonical['recurring_consent_version']=BroadcasterMandates::CONSENT;
@@ -48,6 +50,7 @@ final class Payments {
    // current stored-card state. New requests fail closed before any payment insert.
    SavedCards::preflight($db,$application,$external,$choice);
    RecurringMandates::preflight($db,$application,$external,$recurring);
+   if($boostStation!==null)BroadcasterBoost::preflight($db);
    $customer=Db::one($db,'SELECT id FROM customers WHERE application_id=? AND external_user_id=? FOR UPDATE',[$application,$external]);
    if($customer){$cid=$customer['id'];Db::exec($db,'UPDATE customers SET email=?,name=? WHERE id=?',[$email,$name,$cid]);}
    else { $cid=Security::id();Db::exec($db,'INSERT INTO customers(id,application_id,external_user_id,email,name) VALUES(?,?,?,?,?)',[$cid,$application,$external,$email,$name]); }
@@ -62,6 +65,8 @@ final class Payments {
      $db,$application,$cid,$pid,NexiClient::providerCustomerId($external));
    if($bSku!==null)$recurrence=BroadcasterMandates::prepare(
      $db,$application,$cid,$pid,$external,$bSku,$bResource,(int)$product['amount_cents']);
+   if($boostStation!==null)BroadcasterBoost::record(
+     $db,$application,$cid,$pid,$sku,$boostStation,(int)$product['amount_cents']);
    if($winbackExpiredAt!==null)
     Winback::reserve($db,$application,$cid,$pid,$winbackExpiredAt);
    self::log($db,$pid,'created','Το iRadios ζήτησε πληρωμή.');$db->commit();
@@ -247,6 +252,7 @@ final class Payments {
      }
     }
     $bScope=$env==='staging'?BroadcasterMandates::eventScope($db,$p['id']):null;
+    if(!$bScope && $env==='staging')$bScope=BroadcasterBoost::eventScope($db,$p['id']);
     if($bScope&&($bScope['billing_origin']??'')==='automatic_renewal')
       BroadcasterMandates::settleCycle($db,$p['id'],$status);
     self::log($db,$p['id'],$status,$status==='paid'?'Η Nexi επιβεβαίωσε επιτυχημένη πληρωμή.':($status==='failed'?'Η Nexi απέρριψε την πληρωμή.':'Η συναλλαγή ακυρώθηκε.'));

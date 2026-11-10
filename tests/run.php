@@ -218,4 +218,19 @@ $cardMigration=file_get_contents(dirname(__DIR__).'/database/migrations/20261110
 check(str_contains($cardMigration,'CREATE TABLE IF NOT EXISTS saved_card_agreements') &&
  !preg_match('/\\b(?:card_number|security_code)\\s+(?:VARCHAR|TEXT|CHAR)\\b/i',$cardMigration),
  'SQL schema stores provider contracts and consent, never raw card details');
+$paymentsSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
+$savedCardsSource=file_get_contents(dirname(__DIR__).'/src/SavedCards.php');
+$existingPos=strpos($paymentsSource,"if(\$existing){\$db->commit()");
+$preflightPos=strpos($paymentsSource,'SavedCards::preflight(');
+$insertPos=strpos($paymentsSource,"INSERT INTO payments(id,application_id,customer_id");
+check($existingPos!==false&&$preflightPos!==false&&$insertPos!==false
+ && $existingPos<$preflightPos&&$preflightPos<$insertPos,
+ 'OneClick preflight happens after idempotency lookup but before payment ledger creation');
+check(str_contains($savedCardsSource,"table_name='saved_card_agreements'") &&
+ str_contains($savedCardsSource,"throw new HttpError(422,'ONECLICK_STAGING_MIGRATION_REQUIRED')") &&
+ str_contains($savedCardsSource,"throw new HttpError(422,'SAVED_CARD_NOT_AVAILABLE')"),
+ 'Missing OneClick migration or absent card fails 422 before any Nexi request');
+check(str_contains($savedCardsSource,"SAVED_CARD_EXISTS_OR_PENDING") &&
+ str_contains($savedCardsSource,"if(!$choice['save']&&!$choice['reuse'])return;"),
+ 'Ordinary card checkout remains available without OneClick migration');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

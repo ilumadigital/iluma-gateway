@@ -298,4 +298,28 @@ $routerSource=file_get_contents(dirname(__DIR__).'/public/index.php');
 check(str_contains($routerSource,"/api/v1/recurring/cancel") &&
  str_contains($routerSource,"/api/v1/billing/history"),
  'HMAC-account scoped recurring cancellation and payment history APIs available');
+// HPP HTTP400 with structured Nexi validation is not a "paid" event.
+// Show only the scrubbed error in operator logs; no automatic retry/charge.
+$providerError=NexiClient::errorSummary(json_encode(['errors'=>[
+ ['code'=>'GW0001','description'=>'Invalid recurring contractFrequency']
+]]), 'test-secret');
+check(str_contains($providerError,'GW0001') &&
+ str_contains($providerError,'contractFrequency'),'Nexi structured HPP rejection is diagnosable without card data');
+$paymentSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
+$workerSource=file_get_contents(dirname(__DIR__).'/src/Worker.php');
+check(str_contains($paymentSource,"'hpp_rejected_400'") &&
+ str_contains($paymentSource,'reconcileRejectedHpp404(') &&
+ str_contains($paymentSource,"WHERE payment_id=? AND event_type='hpp_rejected_400'") &&
+ str_contains($paymentSource,"$" . "p['status']!=='unknown'"),
+ 'Gateway never releases a rejected checkout without the exact 400 marker and unknown status');
+check(str_contains($workerSource,"str_starts_with($" . "e->getMessage(),'Nexi status 404 ')") &&
+ str_contains($workerSource,'Payments::reconcileRejectedHpp404('),
+ 'Only a read-only Nexi GET 404 allows the worker to reconcile a rejected HPP');
+check(str_contains($paymentSource,"strtotime((string)$" . "p['created_at'].' UTC')>time()-120") &&
+ str_contains($paymentSource,"$" . "p['operation_id']!==null") &&
+ str_contains($paymentSource,"status='failed'"),
+ 'Rejected checkout closure requires a 2 minute quarantine and no known operation');
+check(str_contains($paymentSource,"status='cancelled',cancelled_at=UTC_TIMESTAMP()") &&
+ str_contains($paymentSource,"last_error_code='HPP_REJECTED_400'"),
+ 'Rejected pending MIT agreement is disabled only after documented safe provider reconciliation');
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

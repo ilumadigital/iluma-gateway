@@ -271,7 +271,16 @@ final class Payments {
         $body['billing_origin']='automatic_renewal';
         $body['external_user_id']=$bScope['external_user_id'];
         $body['cycle_due_at']=$bScope['cycle_due_at'];
+        $body['anchor_day']=$bScope['anchor_day'];
+        $body['period_ends_at']=$bScope['period_ends_at'];
       }
+    }
+    // The initial paid period starts at the provider-confirmation instant,
+    // not at the eventual outbox delivery time.
+    if($bScope && $status==='paid'){
+     $confirmed=Db::one($db,'SELECT confirmed_at FROM payments WHERE id=?',[$p['id']]);
+     if(!empty($confirmed['confirmed_at']))
+      $body['occurred_at']=gmdate('c',strtotime((string)$confirmed['confirmed_at'].' UTC'));
     }
     if($mitCycle){
      $body['billing_origin']='automatic_renewal';

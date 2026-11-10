@@ -39,6 +39,10 @@ final class EnvLoader
             'STAGING_DSN', 'STAGING_USER', 'STAGING_PASSWORD', 'PRODUCTION_DSN',
             'PRODUCTION_USER', 'PRODUCTION_PASSWORD', 'NEXI_STAGING_BASE',
             'NEXI_PRODUCTION_BASE', 'IRADIOS_STAGING_WEBHOOK', 'IRADIOS_PRODUCTION_WEBHOOK',
+            // Optional sandbox MIT controls are explicitly allowlisted; unknown
+            // keys still fail closed. No provider charges without both flags.
+            'MIT_SANDBOX_EXECUTION_ENABLED', 'MIT_SANDBOX_UAT_APPROVED',
+            'BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED', 'BROADCASTER_MIT_SANDBOX_UAT_APPROVED',
         ], true);
         $lines = file($file, FILE_IGNORE_NEW_LINES);
         if ($lines === false) throw new \RuntimeException('Cannot read secrets');

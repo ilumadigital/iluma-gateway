@@ -90,8 +90,8 @@ final class Payments {
    'id'=>(string)$r['payment_id'],'orderId'=>(string)$r['order_id'],
    'sku'=>(string)$r['sku'],'title'=>(string)$r['title'],
    'status'=>(string)$r['status'],'amountCents'=>(int)$r['amount_cents'],
-   'currency'=>(string)$r['currency'],'createdAt'=>(string)$r['created_at'].'Z',
-   'paidAt'=>$r['confirmed_at']?(string)$r['confirmed_at'].'Z':null
+   'currency'=>(string)$r['currency'],'createdAt'=>str_replace(' ','T',(string)$r['created_at']).'Z',
+   'paidAt'=>$r['confirmed_at']?str_replace(' ','T',(string)$r['confirmed_at']).'Z':null
   ],$rows)];
  }
  public static function find(array $credential,string $id):array {

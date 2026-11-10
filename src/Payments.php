@@ -22,6 +22,9 @@ final class Payments {
   if($choice['save']){$canonical['save_card']=true;$canonical['card_consent_version']=$choice['version'];}
   if($choice['reuse'])$canonical['use_saved_card']=true;
   $hash=hash('sha256',Security::json($canonical));
+  // OneClick migration + consent eligibility are checked BEFORE a local
+  // payment exists; 422 is guaranteed NOT to have reached Nexi.
+  SavedCards::preflight($db,$application,$external,$choice);
   $recurrence=null;
   $db->beginTransaction();
   try{

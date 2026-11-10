@@ -97,6 +97,29 @@ final class NexiClient {
    throw new \InvalidArgumentException('Invalid provider contract');
   return $this->request('POST','/api/v1/contracts/'.$contractId.'/deactivation');
  }
+ /**
+  * One irreversible provider attempt per Gateway cycle. The caller must
+  * first commit the unique payment + recurring_cycle ledger to MySQL.
+  * Never retry POST after a timeout: reconcile GET /orders/{orderId} instead.
+  */
+ public function startMit(string $orderId,string $providerCustomerId,
+   string $contractId,int $amountCents):array {
+  if($this->environment!=='staging'||Config::get('MIT_SANDBOX_EXECUTION_ENABLED')!=='1'||
+     Config::get('MIT_SANDBOX_UAT_APPROVED')!=='1')
+   throw new \RuntimeException('MIT sandbox execution is locked');
+  if(!preg_match('/^IL[A-F0-9]{24}$/D',$orderId)||
+     !preg_match('/^ILM[A-F0-9]{24}$/D',$contractId)||
+     !preg_match('/^[A-Z0-9]{1,27}$/D',$providerCustomerId)||
+     $amountCents!==399)throw new \InvalidArgumentException('Invalid MIT parameters');
+  return $this->request('POST','/api/v1/orders/mit',[
+    'captureType'=>'IMPLICIT',
+    'contractId'=>$contractId,
+    'order'=>[
+      'orderId'=>$orderId,'customerId'=>$providerCustomerId,
+      'amount'=>(string)$amountCents,'currency'=>'EUR'
+    ]
+  ]);
+ }
  public function contractsForCustomer(string $customerId):array {
   if(!preg_match('/^[A-Za-z0-9._-]{1,190}$/D',$customerId))throw new \InvalidArgumentException('Invalid customer id');
   return $this->request('GET','/api/v1/contracts/customers/'.$customerId);

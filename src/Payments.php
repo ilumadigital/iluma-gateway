@@ -153,6 +153,17 @@ final class Payments {
           deactivated_at=UTC_TIMESTAMP(),next_due_at=NULL,
           last_error_code='HPP_REJECTED_400'
       WHERE initial_payment_id=? AND status='pending'",[$p['id']]);
+   // The same provider-verified rejected initial HPP must release the
+   // independent Broadcaster contract reservation. No Nexi contract was
+   // created (positive GET 404), so mark it cancelled + deactivated, without
+   // affecting any other product/station mandate.
+   if(BroadcasterMandates::schemaReady($db))
+    Db::exec($db,"UPDATE broadcaster_mandates
+      SET status='cancelled',cancelled_at=UTC_TIMESTAMP(),
+          deactivated_at=UTC_TIMESTAMP(),next_due_at=NULL,
+          last_error_code='HPP_REJECTED_400'
+      WHERE initial_payment_id=? AND status IN ('pending','verification_pending')",
+      [$p['id']]);
    $citTable=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
      WHERE table_schema=DATABASE() AND table_name='saved_card_agreements'");
    if((int)($citTable['n']??0)===1)

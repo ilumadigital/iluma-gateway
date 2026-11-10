@@ -196,6 +196,13 @@ final class RecurringMandates {
     $existing=Db::one($db,'SELECT id FROM recurring_cycles WHERE mandate_id=? AND cycle_due_at=? FOR UPDATE',
        [$mandateId,$mandate['next_due_at']]);
     if($existing){$db->rollBack();continue;}
+    // Renewal always uses the normal L-PREM catalogue product, even when
+    // the initial HPP was the one-time L-WINBACK-199 discounted SKU.
+    // The signed webhook must identify a normal EUR 3.99 recurring payment.
+    $regular=Db::one($db,"SELECT id FROM products
+      WHERE application_id=? AND sku='L-PREM' AND amount_cents=399
+        AND currency='EUR' AND enabled=1",[$mandate['application_id']]);
+    if(!$regular)throw new \RuntimeException('Regular Premium renewal product unavailable');
     $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
     $req='mit-'.$mandateId.'-'.gmdate('YmdHis',strtotime($mandate['next_due_at'].' UTC'));
     $hash=hash('sha256',Security::json([$mandateId,$mandate['next_due_at'],399,'EUR']));
@@ -203,7 +210,7 @@ final class RecurringMandates {
      (id,application_id,customer_id,product_id,order_id,request_key,request_hash,
       amount_cents,currency,status)
      VALUES(?,?,?,?,?,?,?,399,'EUR','pending')",
-     [$pid,$mandate['application_id'],$mandate['customer_id'],$mandate['product_id'],$order,$req,$hash]);
+     [$pid,$mandate['application_id'],$mandate['customer_id'],$regular['id'],$order,$req,$hash]);
     Db::exec($db,"INSERT INTO recurring_cycles
      (id,mandate_id,cycle_due_at,payment_id,status)
      VALUES(?,?,?,?, 'pending')",[Security::id(),$mandateId,$mandate['next_due_at'],$pid]);

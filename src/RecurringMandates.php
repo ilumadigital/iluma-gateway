@@ -129,16 +129,21 @@ final class RecurringMandates {
   }
   $paid=Db::one($db,'SELECT confirmed_at FROM payments WHERE id=?',[$paymentId]);
   if(!$paid||!$paid['confirmed_at'])return;
-  $end=self::monthAfter((string)$paid['confirmed_at']);
+  $original=new \DateTimeImmutable((string)$paid['confirmed_at'],new \DateTimeZone('UTC'));
+  $anchorDay=(int)$original->format('j');
+  $end=self::monthAfter((string)$paid['confirmed_at'],$anchorDay);
   Db::exec($db,"UPDATE recurring_mandates SET status='active',verified_at=UTC_TIMESTAMP(),
-   paid_through_at=?,next_due_at=? WHERE id=? AND status IN ('pending','verification_pending')",
-   [$end,$end,$m['id']]);
+   paid_through_at=?,next_due_at=?,anchor_day=? WHERE id=?
+     AND status IN ('pending','verification_pending')",
+   [$end,$end,$anchorDay,$m['id']]);
  }
  /** Calendar-month arithmetic with correct February/31st clamping in UTC. */
- public static function monthAfter(string $value):string {
+ public static function monthAfter(string $value,?int $anchorDay=null):string {
   $d=new \DateTimeImmutable($value,new \DateTimeZone('UTC'));
   $next=$d->modify('first day of next month');
-  $day=min((int)$d->format('j'),(int)$next->format('t'));
+  $anchor=$anchorDay===null?(int)$d->format('j'):$anchorDay;
+  if($anchor<1||$anchor>31)throw new \InvalidArgumentException('Bad billing day');
+  $day=min($anchor,(int)$next->format('t'));
   return $next->setDate((int)$next->format('Y'),(int)$next->format('n'),$day)
     ->setTime((int)$d->format('H'),(int)$d->format('i'),(int)$d->format('s'))
     ->format('Y-m-d H:i:s');
@@ -231,14 +236,14 @@ final class RecurringMandates {
  }
  /** Called inside Payments::reconcile transaction on a genuine captured order. */
  public static function settleCycle(\PDO $db,string $paymentId,string $status):void {
-  $cycle=Db::one($db,"SELECT c.id,c.cycle_due_at,c.mandate_id,m.status AS mandate_status
+  $cycle=Db::one($db,"SELECT c.id,c.cycle_due_at,c.mandate_id,m.anchor_day,m.status AS mandate_status
     FROM recurring_cycles c JOIN recurring_mandates m ON m.id=c.mandate_id
     WHERE c.payment_id=? FOR UPDATE",[$paymentId]);
   if(!$cycle)return;
   if($status==='paid'){
    Db::exec($db,"UPDATE recurring_cycles SET status='paid' WHERE id=? AND status<>'paid'",[$cycle['id']]);
    if($cycle['mandate_status']==='active'){
-    $newEnd=self::monthAfter((string)$cycle['cycle_due_at']);
+    $newEnd=self::monthAfter((string)$cycle['cycle_due_at'],(int)$cycle['anchor_day']);
     Db::exec($db,"UPDATE recurring_mandates SET
       paid_through_at=?,next_due_at=? WHERE id=? AND status='active'",
      [$newEnd,$newEnd,$cycle['mandate_id']]);

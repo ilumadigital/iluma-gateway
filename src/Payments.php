@@ -55,6 +55,16 @@ final class Payments {
   $p=Db::one(Db::get($credential['environment']),'SELECT * FROM payments WHERE id=? AND application_id=?',[$id,(int)$credential['application_id']]);
   if(!$p)throw new HttpError(404,'Payment not found');return self::publicPayment($p);
  }
+ // Recover an EXISTING payment without creating a checkout or calling Nexi.
+ // Credential application and environment are mandatory query boundaries.
+ public static function findByRequestKey(array $credential,string $requestKey):array {
+  if(!preg_match('/^[A-Za-z0-9._:-]{1,128}$/D',$requestKey))throw new HttpError(400,'Invalid request key');
+  $p=Db::one(Db::get($credential['environment']),
+   'SELECT * FROM payments WHERE application_id=? AND request_key=?',
+   [(int)$credential['application_id'],$requestKey]);
+  if(!$p)throw new HttpError(404,'Payment not found');
+  return self::publicPayment($p);
+ }
  public static function reconcile(string $env,string $order): string {
   $db=Db::get($env);
   $p=Db::one($db,'SELECT * FROM payments WHERE order_id=?',[$order]);if(!$p) throw new HttpError(404,'Order not found');

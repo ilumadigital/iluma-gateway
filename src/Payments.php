@@ -228,6 +228,9 @@ final class Payments {
      // permanently lock the listener out of a new consent or winback retry.
      // Unknown status remains held for reconciliation, never released.
      if(in_array($status,['failed','canceled'],true)){
+      // Do not strand a separate broadcaster SKU/station mandate after a
+      // provider-confirmed rejected initial HPP. Unknown outcomes stay locked.
+      BroadcasterMandates::markInitialFailed($db,$p['id']);
       Db::exec($db,"UPDATE recurring_mandates SET status='cancelled',
        cancelled_at=UTC_TIMESTAMP(),next_due_at=NULL,
        last_error_code='INITIAL_PAYMENT_FAILED'

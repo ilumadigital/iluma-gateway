@@ -268,10 +268,10 @@ check(\Iluma\Gateway\RecurringMandates::monthAfter('2026-01-31 15:14:00')==='202
 putenv('MIT_SANDBOX_EXECUTION_ENABLED=0');
 putenv('MIT_SANDBOX_UAT_APPROVED=0');
 try{
- NexiClient::forEnvironment('staging')->startMit('IL'.str_repeat('A',24),
+ (new NexiClient('staging','offline-test-api-key'))->startMit('IL'.str_repeat('A',24),
   'IR'.str_repeat('A',24),$mitContract,399);
  $mitGateFailed=false;
-}catch(\Throwable){$mitGateFailed=true;}
+}catch(\RuntimeException $e){$mitGateFailed=str_contains($e->getMessage(),'MIT sandbox execution is locked');}
 check($mitGateFailed,'No MIT charge is possible without staged execution and UAT approval flags');
 $mitSource=file_get_contents(dirname(__DIR__).'/src/RecurringMandates.php');
 $mitMigration=file_get_contents(dirname(__DIR__).'/database/migrations/20261110_staging_recurring_mit.sql');

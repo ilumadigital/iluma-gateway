@@ -77,6 +77,11 @@ try {
   if($method==='POST' && $path==='/api/v1/recurring/cancel'){
    Http::respond(\Iluma\Gateway\RecurringMandates::cancel($credential,(string)($body['customer_id']??'')));
   }
+  // Admin-only iRadios workflow on the calling side. Financial shutdown is
+  // atomic here; the signed credential remains scoped to the staging tenant.
+  if($method==='POST' && $path==='/api/v1/accounts/cancel-all'){
+   Http::respond(\Iluma\Gateway\AccountDeletion::cancelAll($credential,(string)($body['customer_id']??'')));
+  }
   // Server-to-server HMAC credentials + account-scoped customer reference.
   // No browser may call these endpoints or supply a Nexi contract ID.
   if($method==='POST' && $path==='/api/v1/payment-methods/status'){

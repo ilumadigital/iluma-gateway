@@ -33,7 +33,8 @@ function requireStepUp(\PDO $registry,string $code):void {
  unset($_SESSION['stepup_fails'],$_SESSION['stepup_block_until']);
 }
 
-function page(string $title,string $body,string $error='',string $notice=''):never {
+// Request-local renderer shared by login and error handling.
+$renderPage = static function(string $title,string $body,string $error='',string $notice=''): never {
  $user=isset($_SESSION['admin_id']);$nav='';$environment=credentialEnv();$csrf=Security::csrf();
  if($user){foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','settings'=>'Ρυθμίσεις'] as $slug=>$label)$nav.='<a href="/ilm-admin/?p='.$slug.'">'.html($label).'</a>';
  $nav.='<form method="post" class="nav-action" data-stepup="Εξαγωγή CSV"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="export"><input type="hidden" name="otp" value=""><button type="submit">Εξαγωγή CSV</button></form>';
@@ -42,7 +43,7 @@ function page(string $title,string $body,string $error='',string $notice=''):nev
  }
  $mfaDialog=$user?'<dialog id="mfa-dialog" class="mfa-dialog" aria-labelledby="mfa-title" aria-describedby="mfa-description"><div class="mfa-sheet"><div class="mfa-icon">✳</div><h2 id="mfa-title">Επιβεβαίωση ενέργειας</h2><p id="mfa-description">Άνοιξε το Google Authenticator και βάλε τον 6ψήφιο κωδικό. Η ενέργεια δεν εκτελείται πριν επιβεβαιώσεις.</p><p class="mfa-action-label" id="mfa-action-label"></p><label for="mfa-code">Κωδικός επιβεβαίωσης</label><input id="mfa-code" class="mfa-code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000"><p id="mfa-validation" class="mfa-validation" role="alert" hidden>Συμπλήρωσε έναν 6ψήφιο κωδικό.</p><div class="mfa-actions"><button type="button" class="button-secondary" id="mfa-cancel">Άκυρο</button><button type="button" id="mfa-confirm">Επιβεβαίωση</button></div></div></dialog>':'';
  echo '<!doctype html><html lang="el"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.html($title).' — ILUMA</title><link rel="stylesheet" href="/ilm-admin/admin.css"></head><body class="'.($user?'is-authenticated':'is-login').'"><header><strong class="brand-mark">ILUMA<span> / GATEWAY</span></strong><span>'.($user?html(strtoupper($environment)).' — '.($environment==='staging'?'TEST ENVIRONMENT':'LIVE DATA (CHARGES LOCKED BY DEFAULT)'):'Προστατευμένη πρόσβαση').'</span></header><div class="layout"><aside aria-label="Πλοήγηση διαχειριστικού">'.$nav.'</aside><main id="main-content"><h1>'.html($title).'</h1>'.($error?'<p class="alert" role="alert">'.html($error).'</p>':'').($notice?'<p class="notice" role="status">'.html($notice).'</p>':'').$body.'</main></div>'.$mfaDialog.'<script defer src="/ilm-admin/admin.js"></script></body></html>';exit;
-}
+};
 try {
  if($_SERVER['REQUEST_METHOD']==='POST') {
   // DB errors are now caught and logged without exposing credentials.
@@ -53,7 +54,7 @@ try {
    $recent=Db::one($reg,"SELECT COUNT(*) AS total FROM audit_logs WHERE action='admin_login_failed' AND ip=? AND created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 15 MINUTE)",[$ip]);
    if((int)($recent['total']??0)>=15){
     http_response_code(429);
-    page('Πολλές απόπειρες σύνδεσης','<p>Προσπαθήστε ξανά αργότερα.</p>');
+    $renderPage('Πολλές απόπειρες σύνδεσης','<p>Προσπαθήστε ξανά αργότερα.</p>');
    }
    $email=(string)($_POST['email']??'');$pw=(string)($_POST['password']??'');
    $u=Db::one($reg,'SELECT * FROM admin_users WHERE email=? AND enabled=1',[$email]);
@@ -92,7 +93,7 @@ try {
  }
  if(empty($_SESSION['admin_id'])){
   $csrf=Security::csrf();$form='<form class="login" method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="login"><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Κωδικός<input name="password" type="password" required autocomplete="current-password"></label><p class="login-hint">Το Google Authenticator ζητείται μόνο όταν επιβεβαιώνεις μια ευαίσθητη ενέργεια.</p><button>Σύνδεση</button></form>';
-  page('Σύνδεση διαχειριστή',$form,$error);
+  $renderPage('Σύνδεση διαχειριστή',$form,$error);
  }
  if($reg===null)$reg=Db::get('registry');
  if(time()-(int)($_SESSION['last']??0)>1800 || time()-(int)($_SESSION['since']??0)>28800){$_SESSION=[];session_destroy();header('Location: /ilm-admin/');exit;}
@@ -204,12 +205,12 @@ try {
  } elseif($p==='settings'){
   $content.='<p>Σύνδεση με email και password. Το Google Authenticator ζητείται για αλλαγές κλειδιών και εξαγωγή CSV, πριν εφαρμοστεί η ενέργεια.</p><p>Live transactions: '.(Config::liveAllowed()?'Ενεργοποίηση από runtime — απαιτείται ανεξάρτητος έλεγχος.':'ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΕΣ').'</p>';
  } else throw new HttpError(404,'Not found');
- page(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','payment'=>'Ανάλυση πληρωμής','subscription'=>'Ανάλυση Nexi MIT συνδρομής','settings'=>'Ρυθμίσεις'][$p]??'ILUMA',$content,$error,$notice);
+ $renderPage(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','payment'=>'Ανάλυση πληρωμής','subscription'=>'Ανάλυση Nexi MIT συνδρομής','settings'=>'Ρυθμίσεις'][$p]??'ILUMA',$content,$error,$notice);
 } catch(\Throwable $e){error_log('ILUMA admin '.get_class($e).': '.$e->getMessage());
  if(!empty($_SESSION['admin_id'])){
   if($e instanceof HttpError && $e->getMessage()==='MFA required')
-   page('Επιβεβαίωση 2FA','<p class="alert" role="alert">Ο κωδικός Google Authenticator δεν έγινε δεκτός. Δοκίμασε ξανά από την ενέργεια.</p>');
-  page('Δεν ολοκληρώθηκε','<p class="alert" role="alert">Η ενέργεια δεν ολοκληρώθηκε. Έλεγξε τα στοιχεία και προσπάθησε ξανά.</p>');
+   $renderPage('Επιβεβαίωση 2FA','<p class="alert" role="alert">Ο κωδικός Google Authenticator δεν έγινε δεκτός. Δοκίμασε ξανά από την ενέργεια.</p>');
+  $renderPage('Δεν ολοκληρώθηκε','<p class="alert" role="alert">Η ενέργεια δεν ολοκληρώθηκε. Έλεγξε τα στοιχεία και προσπάθησε ξανά.</p>');
  }
- page('Σύνδεση','<p>Η πρόσβαση δεν είναι διαθέσιμη.</p>');
+ $renderPage('Σύνδεση','<p>Η πρόσβαση δεν είναι διαθέσιμη.</p>');
 }

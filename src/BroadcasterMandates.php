@@ -73,6 +73,8 @@ final class BroadcasterMandates {
  }
  public static function status(array $credential,array $body):array {
   [$db,$app,$external,$sku,$resource]=self::target($credential,$body);
+  // Prepare sandbox tables before status preflight; no payment is started.
+  BroadcasterStagingBootstrap::ensure($credential);
   $base=['sku'=>$sku,'resource_id'=>$resource,
    'amount_cents'=>self::PRICE[$sku],'currency'=>'EUR','interval'=>'calendar_month',
    'state'=>'unavailable','auto_renew'=>false,'execution_enabled'=>false,

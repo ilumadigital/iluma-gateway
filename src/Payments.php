@@ -13,6 +13,9 @@ final class Payments {
   if(strlen($external)<1||strlen($external)>190||strlen($sku)<1||strlen($sku)>80||!filter_var($email,FILTER_VALIDATE_EMAIL)||strlen($email)>250||strlen($name)>250)
    throw new HttpError(422,'Customer/product validation failed');
   if(!preg_match('/^[A-Za-z0-9._:-]{1,128}$/D',$key)) throw new HttpError(422,'Idempotency-Key required');
+  // A signed staging Broadcaster request prepares only its isolated sandbox.
+  if(isset(BroadcasterMandates::PRICE[$sku])||isset(BroadcasterBoost::PRICE[$sku]))
+   BroadcasterStagingBootstrap::ensure($credential);
   $product=Db::one($db,'SELECT * FROM products WHERE application_id=? AND sku=? AND enabled=1',[$application,$sku]);
   if(!$product) throw new HttpError(422,'Unknown product');
   if(isset($request['amount_cents']) && (int)$request['amount_cents']!==(int)$product['amount_cents'])throw new HttpError(422,'Price mismatch');

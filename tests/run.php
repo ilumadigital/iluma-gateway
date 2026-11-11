@@ -11,6 +11,31 @@ check(strlen($canonical)===64,'HMAC length');check($canonical!==Security::signat
 
 $originalAppEnv=getenv('APP_ENV');
 putenv('APP_ENV=staging');
+$originalProductionEnabled=getenv('PRODUCTION_ENABLED');
+putenv('PRODUCTION_ENABLED=0');
+$stageCredential=['environment'=>'staging','slug'=>'iradiosgr','application_id'=>1];
+check(\Iluma\Gateway\BroadcasterStagingBootstrap::permitted($stageCredential),
+ 'Signed staging credential can initialize broadcaster schema');
+putenv('APP_ENV=development');
+check(\Iluma\Gateway\BroadcasterStagingBootstrap::permitted($stageCredential),
+ 'Hostinger development runtime accepts authenticated staging-only bootstrap');
+putenv('PRODUCTION_ENABLED=1');
+check(!\Iluma\Gateway\BroadcasterStagingBootstrap::permitted($stageCredential),
+ 'Bootstrap refuses production-enabled runtime');
+putenv('PRODUCTION_ENABLED=0');
+putenv('APP_ENV=production');
+check(!\Iluma\Gateway\BroadcasterStagingBootstrap::permitted($stageCredential),
+ 'Bootstrap rejects production APP_ENV');
+putenv('APP_ENV=development');
+check(!\Iluma\Gateway\BroadcasterStagingBootstrap::permitted(
+ ['environment'=>'production','slug'=>'iradiosgr','application_id'=>1]),
+ 'Production credential cannot initialize broadcaster sandbox');
+check(!\Iluma\Gateway\BroadcasterStagingBootstrap::permitted(
+ ['environment'=>'staging','slug'=>'another-app','application_id'=>1]),
+ 'Other tenants cannot initialize iRadios schema');
+putenv('APP_ENV=staging');
+if($originalProductionEnabled===false)putenv('PRODUCTION_ENABLED');
+else putenv('PRODUCTION_ENABLED='.$originalProductionEnabled);
 $stationRef=str_repeat('a',24);
 $boostOrder=['resource_id'=>$stationRef,'auto_renew'=>false];
 check(\Iluma\Gateway\BroadcasterBoost::choice($boostOrder,'staging','BOOST-G-DAY','iradiosgr',2900)===$stationRef,
@@ -54,6 +79,22 @@ check($manageAuditSource!==false&&
  str_contains($manageAuditSource,'BROADCASTER STAGING READINESS')&&
  str_contains($manageAuditSource,"Config::get('APP_ENV')!=='staging'"),
  'Staging broadcaster migration and read-only readiness audit require explicit APP_ENV=staging');
+$autoSetupSource=file_get_contents(dirname(__DIR__).'/src/BroadcasterStagingBootstrap.php');
+$checkoutSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
+$statusSource=file_get_contents(dirname(__DIR__).'/src/BroadcasterMandates.php');
+check($autoSetupSource!==false&&
+ str_contains($autoSetupSource,"Db::get('staging')")&&
+ !str_contains($autoSetupSource,"Db::get('production')")&&
+ str_contains($autoSetupSource,'GET_LOCK(')&&
+ str_contains($autoSetupSource,'BROADCASTER_STAGING_CATALOG_MISMATCH'),
+ 'Auto-bootstrap uses only staging DB, serializes and validates the catalog');
+check($checkoutSource!==false&&
+ strpos($checkoutSource,'BroadcasterStagingBootstrap::ensure($credential)')<
+ strpos($checkoutSource,'SELECT * FROM products WHERE application_id=? AND sku=? AND enabled=1'),
+ 'Broadcaster setup precedes product lookup and provider checkout');
+check($statusSource!==false&&
+ str_contains($statusSource,'BroadcasterStagingBootstrap::ensure($credential)'),
+ 'Signed recurring-status request prepares staging without a payment');
 check(\Iluma\Gateway\RecurringMandates::monthAfter('2027-02-28 15:04:05',31)==='2027-03-31 15:04:05',
  'MIT renewals preserve January 31 billing anchor after February');
 check(\Iluma\Gateway\RecurringMandates::monthAfter('2028-02-29 15:04:05',31)==='2028-03-31 15:04:05',

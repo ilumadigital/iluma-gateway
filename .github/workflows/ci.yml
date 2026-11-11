@@ -33,29 +33,32 @@ jobs:
       - name: Syntax check
         run: find src public bin tests -name '*.php' -print0 | xargs -0 -n1 php -l
 
-      - name: Ensure Hostinger routing points to tested release
-        run: |
-          grep -Fq 'RewriteRule ^ilm-admin/?$ public/admin_20261111_r3.php [L,QSA]' .htaccess
-          grep -Fq 'admin_20261111_r3\.php' .htaccess
-          if grep -Fq 'RewriteRule ^ilm-admin/?$ public/admin_20261111_b2.php' .htaccess; then
-            echo "FAIL: old admin release is still routable"
-            exit 1
-          fi
-
-      - name: Smoke-test both admin entrypoints without database
+      - name: Enforce one canonical PHP admin entrypoint
         shell: bash
         run: |
           set -euo pipefail
-          for entrypoint in public/admin.php public/admin_20261111_r3.php; do
+          grep -Fq 'RewriteRule ^ilm-admin/?$ public/admin.php [L,QSA]' .htaccess
+          grep -Fq 'admin\.php' .htaccess
+          if find public -maxdepth 1 -type f -name 'admin_*.php' | grep -q . ||
+             find src -maxdepth 1 -type f -name 'AdminEntry_*.php' | grep -q .; then
+            echo 'FAIL: duplicate release-numbered PHP admin files'
+            exit 1
+          fi
+
+      - name: Smoke-test canonical admin without database
+        shell: bash
+        run: |
+          set -euo pipefail
+          for request in '/ilm-admin/' '/ilm-admin/?p=payments'; do
             output="$(GATEWAY_HOST=gateway.iluma.gr php -d display_errors=1 -r '
               $_SERVER["HTTP_HOST"]="gateway.iluma.gr";
-              $_SERVER["REQUEST_URI"]="/ilm-admin";
+              $_SERVER["REQUEST_URI"]=$argv[1];
               $_SERVER["REQUEST_METHOD"]="GET";
-              require $argv[1];
-            ' -- "$entrypoint" 2>&1)"
-            grep -Fq 'Σύνδεση διαχειριστή' <<< "$output"
-            if grep -Eq 'Fatal error|Internal server error|Warning:|Parse error' <<< "$output"; then
-              echo "FAIL: admin GET login smoke test: $entrypoint"
+              require "public/admin.php";
+            ' -- "$request" 2>&1)"
+            if ! grep -Fq 'Σύνδεση διαχειριστή' <<< "$output" ||
+               grep -Eq 'Fatal error|Internal server error|Warning:|Parse error' <<< "$output"; then
+              echo "FAIL: canonical admin smoke test $request"
               exit 1
             fi
           done

@@ -36,6 +36,18 @@ check(!\Iluma\Gateway\BroadcasterStagingBootstrap::permitted(
 putenv('APP_ENV=staging');
 if($originalProductionEnabled===false)putenv('PRODUCTION_ENABLED');
 else putenv('PRODUCTION_ENABLED='.$originalProductionEnabled);
+// Account deletion is a signed, staging-only financial operation; invalid
+// callers must be rejected BEFORE any database connection is attempted.
+$rejected=false;
+try{\Iluma\Gateway\AccountDeletion::cancelAll(
+ ['environment'=>'production','slug'=>'iradiosgr','application_id'=>1],
+ 'iradios-stage-'.str_repeat('a',24));}
+catch(\Iluma\Gateway\HttpError){$rejected=true;}
+check($rejected,'Account-wide billing cancellation rejects production credentials');
+$rejected=false;
+try{\Iluma\Gateway\AccountDeletion::cancelAll($stageCredential,'not-an-iradios-user');}
+catch(\Iluma\Gateway\HttpError){$rejected=true;}
+check($rejected,'Account-wide billing cancellation rejects unscoped customer IDs');
 $stationRef=str_repeat('a',24);
 $boostOrder=['resource_id'=>$stationRef,'auto_renew'=>false];
 check(\Iluma\Gateway\BroadcasterBoost::choice($boostOrder,'staging','BOOST-G-DAY','iradiosgr',2900)===$stationRef,

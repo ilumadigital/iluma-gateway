@@ -208,7 +208,7 @@ check(str_contains($adminSource,'final class AdminPageView') &&
 $dbSource=file_get_contents(dirname(__DIR__).'/src/Db.php');
 check($dbSource!==false &&
  str_contains($dbSource,"PDO::ATTR_PERSISTENT=>PHP_SAPI!=='cli'") &&
- str_contains($dbSource,"if(PHP_SAPI!=='cli')$db->exec('ROLLBACK')"),
+ str_contains($dbSource,"if(PHP_SAPI!=='cli')\$db->exec('ROLLBACK')"),
  'Hostinger web PDO reuse includes rollback of inherited transaction while CLI remains isolated');
 
 check(!str_contains($adminSource,"Config::get('ADMIN_HOST')"),'admin uses gateway host');

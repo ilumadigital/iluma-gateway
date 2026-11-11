@@ -33,21 +33,38 @@ jobs:
       - name: Syntax check
         run: find src public bin tests -name '*.php' -print0 | xargs -0 -n1 php -l
 
-      - name: Smoke-test admin login GET without database
+      - name: Ensure Hostinger routing points to tested release
+        run: |
+          grep -Fq 'RewriteRule ^ilm-admin/?$ public/admin_20261111_r3.php [L,QSA]' .htaccess
+          grep -Fq 'admin_20261111_r3\.php' .htaccess
+          if grep -Fq 'RewriteRule ^ilm-admin/?$ public/admin_20261111_b2.php' .htaccess; then
+            echo "FAIL: old admin release is still routable"
+            exit 1
+          fi
+
+      - name: Smoke-test both admin entrypoints without database
         shell: bash
         run: |
           set -euo pipefail
-          output="$(GATEWAY_HOST=gateway.iluma.gr php -d display_errors=1 -r '
-            $_SERVER["HTTP_HOST"]="gateway.iluma.gr";
-            $_SERVER["REQUEST_URI"]="/ilm-admin";
-            $_SERVER["REQUEST_METHOD"]="GET";
-            require "public/admin_20261111_b2.php";
-          ' 2>&1)"
-          grep -Fq 'Σύνδεση διαχειριστή' <<< "$output"
-          if grep -Eq 'Fatal error|Internal server error|Warning:' <<< "$output"; then
-            echo "Admin GET login smoke test failed"
-            exit 1
-          fi
+          for entrypoint in public/admin.php public/admin_20261111_r3.php; do
+            output="$(GATEWAY_HOST=gateway.iluma.gr php -d display_errors=1 -r '
+              $_SERVER["HTTP_HOST"]="gateway.iluma.gr";
+              $_SERVER["REQUEST_URI"]="/ilm-admin";
+              $_SERVER["REQUEST_METHOD"]="GET";
+              require $argv[1];
+            ' -- "$entrypoint" 2>&1)"
+            grep -Fq 'Σύνδεση διαχειριστή' <<< "$output"
+            if grep -Eq 'Fatal error|Internal server error|Warning:|Parse error' <<< "$output"; then
+              echo "FAIL: admin GET login smoke test: $entrypoint"
+              exit 1
+            fi
+          done
+
+      - name: Exercise Hostinger deployment-integrity preflight
+        run: bash bin/check-hostinger-deploy.sh
+
+      - name: Test missing CSRF rejection
+        run: php tests/admin_security.php
 
       - name: Run isolated security and payment state tests
         run: php tests/run.php

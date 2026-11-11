@@ -195,10 +195,10 @@ putenv('REGISTRY_USER');putenv('STAGING_PASSWORD');
 foreach(['MIT_SANDBOX_EXECUTION_ENABLED','MIT_SANDBOX_UAT_APPROVED',
  'BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED','BROADCASTER_MIT_SANDBOX_UAT_APPROVED'] as $flag)putenv($flag);
 $routing=file_get_contents(dirname(__DIR__).'/.htaccess');
-$adminSource=file_get_contents(dirname(__DIR__).'/public/admin_20261111_b2.php');
-check($routing!==false && str_contains($routing,'^ilm-admin/?$ public/admin_20261111_b2.php'),'hostinger admin path rewrite');
+$adminSource=file_get_contents(dirname(__DIR__).'/src/AdminEntry_20261111_r3.php');
+check($routing!==false && str_contains($routing,'^ilm-admin/?$ public/admin_20261111_r3.php'),'hostinger admin path rewrite');
 check(str_contains($routing,'^ilm-admin/admin\.css$ public/admin.css'),'hostinger admin stylesheet rewrite');
-check(str_contains($adminSource,'X-ILUMA-Admin-Build: 20261111-b2'), 'Versioned admin entrypoint exposes release marker');
+check(str_contains($adminSource,'X-ILUMA-Admin-Build: 20261111-r3'), 'Versioned admin entrypoint exposes release marker');
 check($adminSource!==false && str_contains($adminSource,'/ilm-admin/?p='),'admin navigation uses new path');
 check(str_contains($adminSource,'/ilm-admin/admin.css'),'admin stylesheet uses new path');
 check(str_contains($adminSource,'final class AdminPageView') &&
@@ -297,7 +297,7 @@ try{
  $invalidDeliveryAllowed=true;
 }catch(\InvalidArgumentException){$invalidDeliveryAllowed=false;}
 check(!$invalidDeliveryAllowed,'Targeted webhook delivery rejects invalid payment ID before database access');
-$adminSource=file_get_contents(dirname(__DIR__).'/public/admin_20261111_b2.php');
+$adminSource=file_get_contents(dirname(__DIR__).'/src/AdminEntry_20261111_r3.php');
 check(str_contains($adminSource,'Τελευταίο HTTP webhook:') &&
  str_contains($adminSource,'Δεν έχει πραγματοποιηθεί αποστολή προς το iRadios'),
  'Admin exposes redacted pending delivery and last HTTP status for diagnosis');
@@ -463,7 +463,7 @@ check(!\Iluma\Gateway\RecurringMandates::hasProviderSpacing(
  !\Iluma\Gateway\RecurringMandates::hasProviderSpacing(
   '2026-11-10 18:20:00','2026-12-08 18:19:59'),
  'Backdating renewal due cannot trigger an early scheduled MIT debit');
-$adminSource=file_get_contents(dirname(__DIR__).'/public/admin_20261111_b2.php');
+$adminSource=file_get_contents(dirname(__DIR__).'/src/AdminEntry_20261111_r3.php');
 $subscriptionView=file_get_contents(dirname(__DIR__).'/src/RecurringAdmin.php');
 check(str_contains($adminSource,'RecurringAdmin::index(') &&
  str_contains($adminSource,'RecurringAdmin::detail(') &&

@@ -348,10 +348,21 @@ financial/consent records just to undo a deployment.
 
 ## 2026-11-11: one canonical Admin and safe Hostinger redeployment
 
-Only `public/admin.php` serves `/ilm-admin` and `/ilm-admin/`. It is the
-single admin controller. Do not create release-named `admin_*.php` or
-`AdminEntry_*.php` duplicates. The old files caused source drift and were
-removed. The payment API remains independently served by `public/index.php`.
+Only `public/admin.php` is the public entrypoint for `/ilm-admin` and
+`/ilm-admin/`. It is intentionally a small wrapper loading the **one** private
+`src/AdminController.php` implementation. No release-numbered admin files,
+duplicate public controllers or alternate admin routes are permitted. This
+keeps the login/session/MFA/HTML code out of the web-facing entrypoint, which
+previously suffered repeated loss of a specific PHP block on Hostinger.
+The payment API remains independently served by `public/index.php`.
+
+**Important:** This refactor limits damage from a stale text edit targeting
+the old monolithic `public/admin.php`, but it does NOT prevent an outside
+process or deployment from rewriting the wrapper. A repeated mismatch of
+`git hash-object public/admin.php` against `git rev-parse HEAD:public/admin.php`
+still requires Hostinger file-write attribution. Do not attribute this to
+Google Authenticator, CSRF or the payment cron: none writes PHP source files.
+Verify the exact deployed Git snapshot after manual Hostinger Git redeploy.
 
 GitHub merges do not deploy to Hostinger. Use Hostinger hPanel → Websites →
 gateway.iluma.gr → Git → **Redeploy from Git**, using the reviewed main branch.

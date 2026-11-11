@@ -60,6 +60,9 @@ jobs:
             fi
           done
 
+      - name: Exercise Hostinger deployment-integrity preflight
+        run: bash bin/check-hostinger-deploy.sh
+
       - name: Test missing CSRF rejection
         run: php tests/admin_security.php
 

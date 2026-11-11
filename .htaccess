@@ -13,7 +13,8 @@ RewriteCond %{THE_REQUEST} \s/+public(?:/|\?|\s) [NC]
 RewriteRule ^ - [R=404,L]
 
 # Internal rewrite targets only; direct /public/* requests are denied above.
-RewriteRule ^public/(?:index\.php|admin\.php|admin\.css|admin\.js)$ - [L]
+# Versioned admin PHP entrypoint bypasses stale web OPcache on Hostinger.
+RewriteRule ^public/(?:index\.php|admin_20261111_b2\.php|admin\.css|admin\.js)$ - [L]
 
 # Never allow the web to fetch application sources, dotenv, archives or config.
 RewriteRule ^(?:src|bin|database|deploy|docs|tests|vendor|private|storage|runtime|logs|backups)(?:/|$) - [R=404,L,NC]
@@ -21,7 +22,7 @@ RewriteRule (^|/)\. - [R=404,L]
 RewriteRule \.(?:php|phtml|phar|sql|sqlite|json|md|lock|ini|env|log|bak|zip|tar|gz|key|pem|yml|yaml|xml|sh)$ - [R=404,L,NC]
 
 # Protected admin: both /ilm-admin and /ilm-admin/ work.
-RewriteRule ^ilm-admin/?$ public/admin.php [L,QSA]
+RewriteRule ^ilm-admin/?$ public/admin_20261111_b2.php [L,QSA]
 RewriteRule ^ilm-admin/admin\.css$ public/admin.css [L]
 RewriteRule ^ilm-admin/admin\.js$ public/admin.js [L]
 

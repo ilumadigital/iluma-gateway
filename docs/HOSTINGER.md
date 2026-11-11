@@ -346,51 +346,40 @@ financial/consent records just to undo a deployment.
   cancellation, retry/dunning, tax and SCA review is necessary before automatic
   charges may be enabled.
 
-## 2026-11-11 Hostinger admin release and source integrity
+## 2026-11-11: one canonical Admin and safe Hostinger redeployment
 
-The GitHub main branch passed PHP 8.3/8.4 lint, yet Hostinger PHP CLI
-reported `Unmatched '}'` in both deployed admin files. This indicates the
-deployed source and the reviewed GitHub source may not be identical.
-A successful CI run alone does not attest to what is actually on Hostinger.
+Only `public/admin.php` serves `/ilm-admin` and `/ilm-admin/`. It is the
+single admin controller. Do not create release-named `admin_*.php` or
+`AdminEntry_*.php` duplicates. The old files caused source drift and were
+removed. The payment API remains independently served by `public/index.php`.
 
-The admin code now has **one** source of truth at
-`src/AdminEntry_20261111_r3.php`. Both `public/admin.php` and the
-Hostinger release-pinned `public/admin_20261111_r3.php` load that controller.
-The `.htaccess` admin rule points only to the release-pinned entrypoint;
-`public/index.php` continues to handle payment APIs and Nexi callbacks.
+GitHub merges do not deploy to Hostinger. Use Hostinger hPanel → Websites →
+gateway.iluma.gr → Git → **Redeploy from Git**, using the reviewed main branch.
+Deploy a complete snapshot, not a mixture of old and new PHP files. For stale
+OPcache, use Hostinger PHP controls/support to invalidate/reset the cache; do
+not create another versioned PHP entrypoint.
 
-After the updated commit is deployed, run this from the Git checkout root:
-
-```bash
-bash bin/check-hostinger-deploy.sh
-php tests/admin_security.php
-php tests/run.php
-curl -sS -o /dev/null -w 'Admin HTTP %{http_code}\n' https://gateway.iluma.gr/ilm-admin/
-```
-
-The preflight refuses success if tracked application source differs from
-`git HEAD`, if unexpected untracked PHP/application files exist inside
-executable source directories, if any PHP file fails lint, or if the admin
-entrypoint cannot render the unauthenticated login page. It is read-only:
-no Nexi payment operations, database writes, migrations or production unlocks.
-
-If preflight says source drift:
+From the actual Git checkout at Hostinger, after manual redeploy, run:
 
 ```bash
-git status --short
-git log -1 --oneline
-git diff --name-only
+cd "$HOME/domains/gateway.iluma.gr/public_html"
+bash bin/check-hostinger-deploy.sh --live
+php bin/manage.php doctor-http
 ```
 
-Do **not** blindly use `git reset --hard` or overwrite live configuration
-or customer data. First preserve any local tracked changes safely and identify
-the deployment revision; restore only the reviewed release through the
-Hostinger Git deployment workflow. The application secrets must remain outside
-`public_html`. A green GitHub CI run does **not** prove the web PHP process
-has refreshed OPcache or that the live route returns HTTP 200.
+Preflight checks Git source integrity, all PHP syntax, the single admin route,
+and unauthenticated login and payments-page views. `--live` requires an
+HTTP 200 response and `X-ILUMA-Admin-Entry: canonical` for
+`https://gateway.iluma.gr/ilm-admin/?p=payments`. These checks are read-only.
+If Git metadata is not included in the Hostinger deployment, the Git integrity
+check cannot run: verify the exact deployed commit in hPanel, and run PHP lint
+and HTTP checks separately.
 
-Verify the unauthenticated login in a private browser and the web-facing
-release header `X-ILUMA-Admin-Build: 20261111-r3`, if exposed by the host.
-Also verify the payment API's existing unauthenticated error behavior and
-that source paths still return 404. **Do not create a new payment just to
-test the admin fix.**
+A signed-out HTTP 200 is not proof of an authenticated payments query.
+Sign in and check payments, subscriptions, and dashboard; review private PHP
+errors if any fail. Do not change MySQL credentials, master keys, customer data,
+payment states or Nexi transactions as a workaround. Never blindly use
+`git reset --hard` on a live host.
+
+GitHub CI prevents new duplicate versioned admin PHP files and tests the
+one public/admin.php controller before merge.

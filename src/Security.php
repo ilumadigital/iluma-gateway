@@ -43,7 +43,13 @@ final class Security {
   if(!is_array($j)||array_is_list($j)) throw new HttpError(400,'JSON object required');return $j;
  }
  public static function csrf(): string { if(empty($_SESSION['csrf'])) $_SESSION['csrf']=bin2hex(random_bytes(32)); return $_SESSION['csrf']; }
- public static function verifyCsrf(): void { if(!hash_equals((string)($_SESSION['csrf']??''),(string)($_POST['_csrf']??''))) throw new HttpError(403,'Invalid CSRF token'); }
+ public static function verifyCsrf(): void {
+  // Missing tokens must never validate: hash_equals('', '') returns true.
+  $expected=$_SESSION['csrf']??null;
+  $provided=$_POST['_csrf']??null;
+  if(!is_string($expected)||$expected===''||!is_string($provided)||!hash_equals($expected,$provided))
+   throw new HttpError(403,'Invalid CSRF token');
+ }
  public static function h(string $v): string { return htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
  public static function otpVerify(string $secret,string $userCode): bool {
   if(!preg_match('/^[0-9]{6}$/D',$userCode)) return false;

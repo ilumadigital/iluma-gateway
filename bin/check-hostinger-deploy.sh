@@ -27,6 +27,19 @@ if [[ -n "$(git ls-files --others --exclude-standard -- public src bin)" ]]; the
   exit 1
 fi
 
+test -f src/AdminController.php || {
+  echo 'FAIL: private Admin controller is missing'
+  exit 1
+}
+grep -Fq "require dirname(__DIR__) . '/src/AdminController.php';" public/admin.php || {
+  echo 'FAIL: public/admin.php does not point to the single private controller'
+  exit 1
+}
+if grep -Eq 'class AdminPageView|function requireStepUp' public/admin.php; then
+  echo 'FAIL: duplicated Admin code in public entrypoint'
+  exit 1
+fi
+
 grep -Fq 'RewriteRule ^ilm-admin/?$ public/admin.php [L,QSA]' .htaccess || {
   echo 'FAIL: admin route does not use canonical public/admin.php'
   exit 1

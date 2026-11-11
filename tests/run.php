@@ -207,7 +207,20 @@ putenv('REGISTRY_USER');putenv('STAGING_PASSWORD');
 foreach(['MIT_SANDBOX_EXECUTION_ENABLED','MIT_SANDBOX_UAT_APPROVED',
  'BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED','BROADCASTER_MIT_SANDBOX_UAT_APPROVED'] as $flag)putenv($flag);
 $routing=file_get_contents(dirname(__DIR__).'/.htaccess');
-$adminSource=file_get_contents(dirname(__DIR__).'/public/admin.php');
+$adminEntrypoint=file_get_contents(dirname(__DIR__).'/public/admin.php');
+$adminSource=file_get_contents(dirname(__DIR__).'/src/AdminController.php');
+check($adminEntrypoint!==false &&
+ str_contains($adminEntrypoint,"require dirname(__DIR__) . '/src/AdminController.php';") &&
+ !str_contains($adminEntrypoint,'class AdminPageView') &&
+ !str_contains($adminEntrypoint,'function requireStepUp(') &&
+ strlen($adminEntrypoint)<1024,
+ 'One short public Admin entrypoint forwards to a single private controller');
+check($adminSource!==false &&
+ str_contains($adminSource,'session_start();') &&
+ str_contains($adminSource,'function requireStepUp(') &&
+ str_contains($adminSource,'final class AdminPageView') &&
+ str_contains($adminSource,'AdminPageView::render('),
+ 'Admin session, MFA and HTML renderer stay together in the private controller');
 check($routing!==false && str_contains($routing,'^ilm-admin/?$ public/admin.php'),'hostinger admin path rewrite');
 check(str_contains($routing,'^ilm-admin/admin\.css$ public/admin.css'),'hostinger admin stylesheet rewrite');
 check(str_contains($adminSource,'X-ILUMA-Admin-Entry: canonical'), 'Canonical admin entrypoint exposes build marker');
@@ -309,7 +322,7 @@ try{
  $invalidDeliveryAllowed=true;
 }catch(\InvalidArgumentException){$invalidDeliveryAllowed=false;}
 check(!$invalidDeliveryAllowed,'Targeted webhook delivery rejects invalid payment ID before database access');
-$adminSource=file_get_contents(dirname(__DIR__).'/public/admin.php');
+$adminSource=file_get_contents(dirname(__DIR__).'/src/AdminController.php');
 check(str_contains($adminSource,'Τελευταίο HTTP webhook:') &&
  str_contains($adminSource,'Δεν έχει πραγματοποιηθεί αποστολή προς το iRadios'),
  'Admin exposes redacted pending delivery and last HTTP status for diagnosis');
@@ -475,7 +488,7 @@ check(!\Iluma\Gateway\RecurringMandates::hasProviderSpacing(
  !\Iluma\Gateway\RecurringMandates::hasProviderSpacing(
   '2026-11-10 18:20:00','2026-12-08 18:19:59'),
  'Backdating renewal due cannot trigger an early scheduled MIT debit');
-$adminSource=file_get_contents(dirname(__DIR__).'/public/admin.php');
+$adminSource=file_get_contents(dirname(__DIR__).'/src/AdminController.php');
 $subscriptionView=file_get_contents(dirname(__DIR__).'/src/RecurringAdmin.php');
 check(str_contains($adminSource,'RecurringAdmin::index(') &&
  str_contains($adminSource,'RecurringAdmin::detail(') &&

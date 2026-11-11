@@ -10,8 +10,15 @@ final class Db {
   $prefix=strtoupper($environment);
   $db=new PDO(Config::must($prefix.'_DSN'),Config::must($prefix.'_USER'),Config::must($prefix.'_PASSWORD'),[
    PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,
-   PDO::ATTR_EMULATE_PREPARES=>false, PDO::ATTR_PERSISTENT=>false
+   PDO::ATTR_EMULATE_PREPARES=>false,
+   // Hostinger throttles fresh MySQL connections across the hosting account.
+   // Reuse per-PHP-worker web connections; CLI/cron must remain isolated.
+   PDO::ATTR_PERSISTENT=>PHP_SAPI!=='cli'
   ]);
+  // An interrupted payment request must never leave a transaction open for
+  // the next request using this worker's persistent MySQL connection.
+  // ROLLBACK is harmless when there is no active transaction. Never COMMIT.
+  if(PHP_SAPI!=='cli')$db->exec('ROLLBACK');
   $db->exec("SET time_zone='+00:00'");
   return self::$pool[$environment]=$db;
  }

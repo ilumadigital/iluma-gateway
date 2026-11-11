@@ -200,6 +200,17 @@ check($routing!==false && str_contains($routing,'^ilm-admin/?$ public/admin.php'
 check(str_contains($routing,'^ilm-admin/admin\.css$ public/admin.css'),'hostinger admin stylesheet rewrite');
 check($adminSource!==false && str_contains($adminSource,'/ilm-admin/?p='),'admin navigation uses new path');
 check(str_contains($adminSource,'/ilm-admin/admin.css'),'admin stylesheet uses new path');
+check(str_contains($adminSource,'final class AdminPageView') &&
+ str_contains($adminSource,'AdminPageView::render(') &&
+ !str_contains($adminSource,'$renderPage(') &&
+ !str_contains($adminSource,'function page('),
+ 'Admin login/error paths use static view method, not a mutable callable');
+$dbSource=file_get_contents(dirname(__DIR__).'/src/Db.php');
+check($dbSource!==false &&
+ str_contains($dbSource,"PDO::ATTR_PERSISTENT=>PHP_SAPI!=='cli'") &&
+ str_contains($dbSource,"if(PHP_SAPI!=='cli')$db->exec('ROLLBACK')"),
+ 'Hostinger web PDO reuse includes rollback of inherited transaction while CLI remains isolated');
+
 check(!str_contains($adminSource,"Config::get('ADMIN_HOST')"),'admin uses gateway host');
 check(!str_contains($adminSource,"header('Location: /')"),'admin redirects stay in protected path');
 check(AdminContext::environment([])==='staging','admin login page uses staging without a session environment');

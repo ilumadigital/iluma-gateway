@@ -41,7 +41,7 @@ jobs:
             $_SERVER["HTTP_HOST"]="gateway.iluma.gr";
             $_SERVER["REQUEST_URI"]="/ilm-admin";
             $_SERVER["REQUEST_METHOD"]="GET";
-            require "public/admin.php";
+            require "public/admin_20261111_b2.php";
           ' 2>&1)"
           grep -Fq 'Σύνδεση διαχειριστή' <<< "$output"
           if grep -Eq 'Fatal error|Internal server error|Warning:' <<< "$output"; then

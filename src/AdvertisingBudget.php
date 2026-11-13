@@ -12,9 +12,14 @@ final class AdvertisingBudget {
  public const SKU='ADV-BUDGET';
  public static function choice(array $credential,array $request,string $sku):?array {
   if($sku!==self::SKU)return null;
-  if(($credential['environment']??'')!=='staging'||
-     ($credential['slug']??'')!=='iradiosgr'||
-     Config::get('APP_ENV')==='production'||Config::liveAllowed())
+  // The Gateway may host live and sandbox tenants on one web runtime.
+  // Only the HMAC-authenticated *staging* iRadios credential can use the
+  // isolated staging database/Nexi Sandbox, and an explicit operator opt-in
+  // is additionally required. Neither APP_ENV nor PRODUCTION_ENABLED alone
+  // can turn on advertising checkout or authorize the production provider.
+  if(Config::get('ADVERTISING_STAGING_CHECKOUT_ENABLED')!=='1'||
+     ($credential['environment']??'')!=='staging'||
+     ($credential['slug']??'')!=='iradiosgr')
    throw new HttpError(403,'ADVERTISING_STAGING_ONLY');
   $customer=$request['customer_id']??null;
   $amount=$request['amount_cents']??null;

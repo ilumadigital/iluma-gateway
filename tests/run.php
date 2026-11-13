@@ -571,14 +571,14 @@ $advertising=['product_sku'=>'ADV-BUDGET',
  'customer_id'=>'iradios-stage-'.str_repeat('a',24),
  'campaign_id'=>str_repeat('b',24),'quote_id'=>str_repeat('c',24),
  'amount_cents'=>12345,'currency'=>'EUR'];
-check(\\Iluma\\Gateway\\AdvertisingBudget::permitted($adCredential),
+check(\Iluma\Gateway\AdvertisingBudget::permitted($adCredential),
  'Only signed iRadios staging customer may use variable advertising budget');
-$scope=\\Iluma\\Gateway\\AdvertisingBudget::choice($advertising,$adCredential);
+$scope=\Iluma\Gateway\AdvertisingBudget::choice($advertising,$adCredential);
 check(($scope['amount_cents']??null)===12345&&
  ($scope['campaign_id']??null)===str_repeat('b',24)&&
  ($scope['quote_id']??null)===str_repeat('c',24),
  'Quote, campaign and exact payable cents are bound to checkout');
-check(\\Iluma\\Gateway\\AdvertisingBudget::choice([
+check(\Iluma\Gateway\AdvertisingBudget::choice([
  'product_sku'=>'L-PREM'],$adCredential)===null,
  'Fixed-price Listener SKU never enters advertising budget flow');
 foreach([
@@ -588,20 +588,20 @@ foreach([
  ['use_saved_card'=>true],['currency'=>'USD']
 ] as $patch){
  $refused=false;
- try{\\Iluma\\Gateway\\AdvertisingBudget::choice(array_replace($advertising,$patch),$adCredential);}
- catch(\\Iluma\\Gateway\\HttpError){$refused=true;}
+ try{\Iluma\Gateway\AdvertisingBudget::choice(array_replace($advertising,$patch),$adCredential);}
+ catch(\Iluma\Gateway\HttpError){$refused=true;}
  check($refused,'Advertising rejects invalid amount, ID, currency or recurring checkout');
 }
-check(!\\Iluma\\Gateway\\AdvertisingBudget::permitted([
+check(!\Iluma\Gateway\AdvertisingBudget::permitted([
  'environment'=>'production','slug'=>'iradiosgr','application_id'=>1]),
  'Variable Advertising checkout is impossible on production credentials');
-check(!\\Iluma\\Gateway\\AdvertisingBudget::permitted([
+check(!\Iluma\Gateway\AdvertisingBudget::permitted([
  'environment'=>'staging','slug'=>'other-app','application_id'=>1]),
  'Variable Advertising checkout does not authorize other applications');
 putenv('ADVERTISING_SANDBOX_ENABLED=0');
-check(!\\Iluma\\Gateway\\AdvertisingBudget::permitted($adCredential),
+check(!\Iluma\Gateway\AdvertisingBudget::permitted($adCredential),
  'Advertising checkout remains disabled unless staging flag is explicit');
-check(str_contains(\\Iluma\\Gateway\\CheckoutReturn::url('staging','/checkout/result',
+check(str_contains(\Iluma\Gateway\CheckoutReturn::url('staging','/checkout/result',
  'IL'.str_repeat('A',24),'ADV-BUDGET'),'/backoffice/agency/campaigns?gateway_return=result'),
  'Nexi Advertising return goes into the Agency Backoffice without marking paid');
 $adPaymentSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');

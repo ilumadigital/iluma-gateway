@@ -4,6 +4,60 @@ require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Db,Security};
 if(PHP_SAPI!=='cli')exit(1);
 $command=$argv[1]??'';
+if($command==='audit-staging-advertising'){
+ // READ-ONLY operator preflight on the shared Gateway host. The registry and
+ // STAGING tenant are inspected; production DB, Nexi and payment writes are
+ // NEVER accessed. Does not display app IDs, secrets or customer information.
+ $results=[];$appId=null;
+ $check=static function(string $label,callable $fn) use (&$results):void {
+  try{$results[$label]=$fn()===true?'OK':'NOT_READY';}
+  catch(\Throwable $e){
+   $results[$label]='FAILED';
+   error_log('ILUMA advertising audit '.$label.' '.get_class($e));
+  }
+ };
+ $check('REGISTRY_IRADIOS_APPLICATION',static function() use (&$appId):bool{
+  $rows=Db::all(Db::get('registry'),
+   "SELECT id,enabled FROM applications WHERE slug='iradiosgr' LIMIT 2");
+  if(count($rows)!==1||(int)$rows[0]['enabled']!==1)return false;
+  $appId=(int)$rows[0]['id'];return $appId>0;
+ });
+ $check('STAGING_ADVERTISING_TABLE',static function():bool {
+  $row=Db::one(Db::get('staging'),"SELECT COUNT(*) AS n FROM information_schema.tables
+   WHERE table_schema=DATABASE() AND table_name='advertising_budget_payments'");
+  return (int)($row['n']??0)===1;
+ });
+ $check('STAGING_PREMIUM_ANCHOR',static function() use (&$appId):bool {
+  if(!$appId)return false;
+  $rows=Db::all(Db::get('staging'),
+   "SELECT amount_cents,currency,enabled FROM products
+    WHERE application_id=? AND sku='L-PREM' LIMIT 2",[$appId]);
+  return count($rows)===1&&(int)$rows[0]['enabled']===1&&
+   (int)$rows[0]['amount_cents']===399&&$rows[0]['currency']==='EUR';
+ });
+ $check('STAGING_ADV_BUDGET_PRODUCT',static function() use (&$appId):bool {
+  if(!$appId)return false;
+  $rows=Db::all(Db::get('staging'),
+   "SELECT amount_cents,currency,enabled FROM products
+    WHERE application_id=? AND sku='ADV-BUDGET' LIMIT 2",[$appId]);
+  return count($rows)===1&&(int)$rows[0]['enabled']===1&&
+   (int)$rows[0]['amount_cents']===100&&$rows[0]['currency']==='EUR';
+ });
+ $check('NEXI_STAGING_ENDPOINT',static fn():bool=>
+  \Iluma\Gateway\Config::base('staging')===
+  'https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp');
+ $check('SIGNED_STAGE_WEBHOOK_TARGET',static fn():bool=>
+  \Iluma\Gateway\Config::webhook('staging')===
+  'https://stage.iradios.gr/api/gateway/webhook');
+ $check('ADVERTISING_STAGING_CHECKOUT_OPT_IN',static fn():bool=>
+  \Iluma\Gateway\Config::get('ADVERTISING_STAGING_CHECKOUT_ENABLED')==='1');
+ foreach($results as $label=>$state)echo $label.': '.$state."\n";
+ $failed=in_array('FAILED',$results,true);
+ $ready=!$failed&&!in_array('NOT_READY',$results,true);
+ echo 'ADVERTISING STAGING READINESS: '.($ready?'READY_FOR_NEXI_SANDBOX_UAT':'NOT_READY')."\n";
+ echo "AUDIT: READ-ONLY; ZERO ORDERS, ZERO CHARGES, ZERO DATABASE WRITES\n";
+ exit($failed?2:($ready?0:1));
+}
 if($command==='doctor-http'){
  // Safe Hostinger diagnosis for /ilm-admin and API 500/503. Read-only.
  // Never prints credentials, connection strings, domain filesystem paths,

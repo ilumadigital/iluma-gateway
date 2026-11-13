@@ -35,3 +35,6 @@ jobs:
 
       - name: Run isolated security and payment state tests
         run: php tests/run.php
+
+      - name: Verify staging-only advertising checkout safeguards
+        run: php tests/advertising_budget.php

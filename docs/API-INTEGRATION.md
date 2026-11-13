@@ -52,6 +52,50 @@ $signature=hash_hmac('sha256',$canonical,$gatewaySecret);
 
 `$gatewaySecret` is the **raw hex string** printed at credential creation. Do not decode it into binary before HMAC, unless the protocol is intentionally versioned and changed on both sides.
 
+## Advertising Budget (staging only, never production)
+
+A signed iRadios **staging** backend request may use `ADV-BUDGET` after
+`ADVERTISING_SANDBOX_ENABLED=1` is set in the Gateway's private configuration
+and `AD_PAYMENTS_SANDBOX_ENABLED=1` is enabled separately in iRadios staging.
+The Gateway HMAC and idempotency rules above still apply. This path is not
+available to a browser, a production credential, or any other application.
+
+Exact signed request body:
+
+```json
+{
+  "customer_id": "iradios-stage-aaaaaaaaaaaaaaaaaaaaaaaa",
+  "product_sku": "ADV-BUDGET",
+  "email": "sandbox@example.org",
+  "name": "Staging Agency",
+  "campaign_id": "bbbbbbbbbbbbbbbbbbbbbbbb",
+  "quote_id": "cccccccccccccccccccccccc",
+  "amount_cents": 12400,
+  "currency": "EUR"
+}
+```
+
+The amount is the **authoritative payable** amount from iRadios's versioned,
+short-lived quote, including its configured tax policy. The Gateway refuses
+anything other than an integer amount within 100–100000000 cents, valid 24-hex
+campaign/quote identifiers, a signed staging account identifier and precisely
+allowlisted request keys. The same quote ID may create **only one** payment
+regardless of idempotency key. It is recorded in the staging-only
+`advertising_budget_scopes` table, without changing the fixed product catalog
+prices or recurring subscriptions.
+
+On Nexi's verified payment state, the signed Gateway outbox event includes
+`campaign_id`, `quote_id`, `external_user_id`, `product_sku=ADV-BUDGET`
+and the original confirmed amount. iRadios matches the unique payment intent,
+quote and campaign before creating the funding lot. The browser return redirects
+to `/backoffice/agency/campaigns` and **cannot** credit money or trigger Admin
+approval by itself. The Agency must explicitly submit its fully funded draft.
+
+After merging Gateway source, Hostinger **manual Git redeploy** is required.
+Do not enable either sandbox flag before verifying PHP offline tests, secure
+staging DB isolation, Nexi sandbox merchant credentials, webhook signature and
+end-to-end disposable test. **Do not enable PRODUCTION_ENABLED.**
+
 ## Checkout
 
 ```http

@@ -63,6 +63,18 @@ assertCase(is_string($paymentSource)&&
  strpos($paymentSource,'AdvertisingBudget::eventScope($db'),
  'Missing advertising schema cannot affect existing premium and broadcaster payment reconciliation');
 
+$manageSource=file_get_contents(dirname(__DIR__).'/bin/manage.php');
+$start=is_string($manageSource)?strpos($manageSource,"if(\$command==='audit-staging-advertising'){"):false;
+$end=$start!==false?strpos($manageSource,"if(\$command==='doctor-http'){",$start):false;
+$auditSection=$start!==false&&$end!==false?substr($manageSource,$start,$end-$start):'';
+assertCase($auditSection!==''&&
+ str_contains($auditSection,'READY_FOR_NEXI_SANDBOX_UAT')&&
+ str_contains($auditSection,'ADVERTISING_STAGING_CHECKOUT_ENABLED')&&
+ !str_contains($auditSection,"Db::get('production')")&&
+ !str_contains($auditSection,'NexiClient::')&&
+ !str_contains($auditSection,'Db::exec('),
+ 'Advertising preflight is staging-scoped, CLI read-only and does not contact Nexi');
+
 $sql=file_get_contents(dirname(__DIR__).'/database/migrations/2026-11-staging-advertising-budget.sql');
 assertCase(is_string($sql)&&
  str_contains($sql,'SET @iradios_staging_application_id = NULL;')&&

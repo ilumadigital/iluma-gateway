@@ -276,7 +276,6 @@ final class Payments {
       if($mitCycle)RecurringMandates::settleCycle($db,$p['id'],$status);
      }
     }
-    $adScope=$env==='staging'?AdvertisingBudget::eventScope($db,$p['id']):null;
     $bScope=$env==='staging'?BroadcasterMandates::eventScope($db,$p['id']):null;
     if(!$bScope && $env==='staging')$bScope=BroadcasterBoost::eventScope($db,$p['id']);
     if($bScope&&($bScope['billing_origin']??'')==='automatic_renewal')
@@ -285,6 +284,10 @@ final class Payments {
     Db::exec($db,'INSERT INTO payment_attempts(payment_id,provider_status,operation_id) VALUES(?,?,?)',[$p['id'],$status,$operation]);
     $product=Db::one($db,'SELECT sku FROM products WHERE id=? AND application_id=?',
       [$locked['product_id'],$locked['application_id']]);
+    // Unmigrated advertising staging schema must NEVER break other SKU webhooks.
+    // Read the advertising table only for an authenticated, persisted ADV-BUDGET order.
+    $adScope=$env==='staging'&&($product['sku']??'')===AdvertisingBudget::SKU?
+      AdvertisingBudget::eventScope($db,$p['id']):null;
     $eventId=Security::id();$body=['event_id'=>$eventId,'event_type'=>'payment.'.$status,'payment_id'=>$p['id'],'order_id'=>$order,'customer_id'=>$p['customer_id'],'amount_cents'=>(int)$p['amount_cents'],'currency'=>'EUR',
       'product_sku'=>$product['sku']??'',
       'environment'=>$env,'occurred_at'=>gmdate('c')];

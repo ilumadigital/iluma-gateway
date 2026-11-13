@@ -34,4 +34,4 @@ try{AdvertisingBudget::choice(['environment'=>'production','slug'=>'iradiosgr'],
 assertCase($rejected,'Production advertising budget is disabled');
 $order='IL'.str_repeat('A',24);
 assertCase(str_contains(CheckoutReturn::url('staging','/checkout/result',$order,'ADV-BUDGET'),
- '/agency/dashboard?gateway_return=result'),'Advertising return is agency-scoped');
+ '/agency/v2/campaigns?gateway_return=result'),'Advertising return is agency-scoped');

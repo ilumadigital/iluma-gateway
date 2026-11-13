@@ -55,8 +55,10 @@ $signature=hash_hmac('sha256',$canonical,$gatewaySecret);
 ## Advertising Budget (staging only, never production)
 
 A signed iRadios **staging** backend request may use `ADV-BUDGET` after
-`ADVERTISING_SANDBOX_ENABLED=1` is set in the Gateway's private configuration
-and `AD_PAYMENTS_SANDBOX_ENABLED=1` is enabled separately in iRadios staging.
+the existing signed iRadios staging Gateway credentials are configured.
+There are no extra advertising payment flags: this route is restricted to the
+signed iRadios **staging** application, isolated staging database and Nexi Sandbox.
+The advertising quote amount and VAT are owned by iRadios Admin pricing settings.
 The Gateway HMAC and idempotency rules above still apply. This path is not
 available to a browser, a production credential, or any other application.
 

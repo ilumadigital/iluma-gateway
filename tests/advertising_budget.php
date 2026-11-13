@@ -35,3 +35,10 @@ assertCase($rejected,'Production advertising budget is disabled');
 $order='IL'.str_repeat('A',24);
 assertCase(str_contains(CheckoutReturn::url('staging','/checkout/result',$order,'ADV-BUDGET'),
  '/agency/v2/campaigns?gateway_return=result'),'Advertising return is agency-scoped');
+
+$sql=file_get_contents(dirname(__DIR__).'/database/migrations/2026-11-staging-advertising-budget.sql');
+assertCase(is_string($sql)&&
+ str_contains($sql,'SET @iradios_staging_application_id = NULL;')&&
+ str_contains($sql,'p.application_id=@iradios_staging_application_id')&&
+ !str_contains($sql,"FROM products WHERE sku='L-PREM' AND enabled=1"),
+ 'Staging ADV-BUDGET product migration requires a verified app ID');

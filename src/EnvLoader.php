@@ -43,6 +43,7 @@ final class EnvLoader
             // keys still fail closed. No provider charges without both flags.
             'MIT_SANDBOX_EXECUTION_ENABLED', 'MIT_SANDBOX_UAT_APPROVED',
             'BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED', 'BROADCASTER_MIT_SANDBOX_UAT_APPROVED',
+            'ADVERTISING_SANDBOX_ENABLED',
         ], true);
         $lines = file($file, FILE_IGNORE_NEW_LINES);
         if ($lines === false) throw new \RuntimeException('Cannot read secrets');

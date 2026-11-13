@@ -14,7 +14,19 @@ CREATE TABLE IF NOT EXISTS advertising_budget_payments (
 ) ENGINE=InnoDB;
 -- Fixed catalog anchor: its amount is NEVER used for advertising checkout.
 -- The HMAC-authenticated advertising request provides the validated variable amount.
+-- MANDATORY manual preflight: from the SEPARATE registry DB, verify exactly one
+-- enabled applications row with slug='iradiosgr'; then confirm its numeric ID and
+-- an enabled L-PREM row for THAT SAME application_id in iluma_staging.
+-- Replace NULL with that verified numeric ID when applying this SQL to STAGING.
+-- NULL is intentionally fail-closed: it cannot register ADV-BUDGET for every
+-- application that happens to own an L-PREM catalog entry.
+SET @iradios_staging_application_id = NULL;
 INSERT INTO products(application_id,sku,title,amount_cents,currency,period_days,enabled)
- SELECT application_id,'ADV-BUDGET','iRadios GR Advertising Budget',100,'EUR',NULL,1
- FROM products WHERE sku='L-PREM' AND enabled=1
+ SELECT p.application_id,'ADV-BUDGET','iRadios GR Advertising Budget',100,'EUR',NULL,1
+ FROM products p
+ WHERE p.sku='L-PREM' AND p.enabled=1
+   AND p.application_id=@iradios_staging_application_id
  ON DUPLICATE KEY UPDATE title=VALUES(title);
+-- Mandatory operator postflight: exactly ONE row for the verified app ID.
+SELECT application_id,sku,amount_cents,enabled FROM products
+ WHERE sku='ADV-BUDGET' AND application_id=@iradios_staging_application_id;

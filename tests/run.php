@@ -561,4 +561,59 @@ check(str_contains($mitSource,"sku='L-PREM' AND amount_cents=399") &&
 check(str_contains($paymentSource,'INITIAL_PAYMENT_FAILED') &&
  str_contains($paymentSource,"status IN ('pending','verification_pending')"),
  'Failed first MIT HPP releases pending consent but not unknown payment attempts');
+// Advertising has a distinct, staging-only, variable-price checkout contract.
+$oldAdvertisingFlag=getenv('ADVERTISING_SANDBOX_ENABLED');
+$oldAppEnv=getenv('APP_ENV');$oldProdFlag=getenv('PRODUCTION_ENABLED');
+putenv('APP_ENV=development');putenv('PRODUCTION_ENABLED=0');
+putenv('ADVERTISING_SANDBOX_ENABLED=1');
+$adCredential=['environment'=>'staging','slug'=>'iradiosgr','application_id'=>1];
+$advertising=['product_sku'=>'ADV-BUDGET',
+ 'customer_id'=>'iradios-stage-'.str_repeat('a',24),
+ 'campaign_id'=>str_repeat('b',24),'quote_id'=>str_repeat('c',24),
+ 'amount_cents'=>12345,'currency'=>'EUR'];
+check(\Iluma\Gateway\AdvertisingBudget::permitted($adCredential),
+ 'Only signed iRadios staging customer may use variable advertising budget');
+$scope=\Iluma\Gateway\AdvertisingBudget::choice($advertising,$adCredential);
+check(($scope['amount_cents']??null)===12345&&
+ ($scope['campaign_id']??null)===str_repeat('b',24)&&
+ ($scope['quote_id']??null)===str_repeat('c',24),
+ 'Quote, campaign and exact payable cents are bound to checkout');
+check(\Iluma\Gateway\AdvertisingBudget::choice([
+ 'product_sku'=>'L-PREM'],$adCredential)===null,
+ 'Fixed-price Listener SKU never enters advertising budget flow');
+foreach([
+ ['amount_cents'=>0],['amount_cents'=>100000001],
+ ['amount_cents'=>123.45],['campaign_id'=>'bad'],['quote_id'=>'bad'],
+ ['customer_id'=>'another-app-account'],['auto_renew'=>true],
+ ['use_saved_card'=>true],['currency'=>'USD']
+] as $patch){
+ $refused=false;
+ try{\Iluma\Gateway\AdvertisingBudget::choice(array_replace($advertising,$patch),$adCredential);}
+ catch(\Iluma\Gateway\HttpError){$refused=true;}
+ check($refused,'Advertising rejects invalid amount, ID, currency or recurring checkout');
+}
+check(!\Iluma\Gateway\AdvertisingBudget::permitted([
+ 'environment'=>'production','slug'=>'iradiosgr','application_id'=>1]),
+ 'Variable Advertising checkout is impossible on production credentials');
+check(!\Iluma\Gateway\AdvertisingBudget::permitted([
+ 'environment'=>'staging','slug'=>'other-app','application_id'=>1]),
+ 'Variable Advertising checkout does not authorize other applications');
+putenv('ADVERTISING_SANDBOX_ENABLED=0');
+check(!\Iluma\Gateway\AdvertisingBudget::permitted($adCredential),
+ 'Advertising checkout remains disabled unless staging flag is explicit');
+check(str_contains(\Iluma\Gateway\CheckoutReturn::url('staging','/checkout/result',
+ 'IL'.str_repeat('A',24),'ADV-BUDGET'),'/backoffice/agency/campaigns?gateway_return=result'),
+ 'Nexi Advertising return goes into the Agency Backoffice without marking paid');
+$adPaymentSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
+check(str_contains($adPaymentSource,'AdvertisingBudget::record(')&&
+ str_contains($adPaymentSource,'AdvertisingBudget::eventScope(')&&
+ str_contains($adPaymentSource,'$checkoutAmount'),
+ 'Payment ledger preserves immutable advertising quote scope and signed event');
+$adMigration=file_get_contents(dirname(__DIR__).'/database/migrations/20261113_advertising_budget.sql');
+check(str_contains($adMigration,'UNIQUE KEY one_advertising_payment_per_quote(application_id,quote_id)'),
+ 'A second request key cannot create another Nexi attempt for the same quote');
+if($oldAdvertisingFlag===false)putenv('ADVERTISING_SANDBOX_ENABLED');
+else putenv('ADVERTISING_SANDBOX_ENABLED='.$oldAdvertisingFlag);
+if($oldAppEnv===false)putenv('APP_ENV');else putenv('APP_ENV='.$oldAppEnv);
+if($oldProdFlag===false)putenv('PRODUCTION_ENABLED');else putenv('PRODUCTION_ENABLED='.$oldProdFlag);
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

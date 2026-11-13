@@ -10,6 +10,10 @@ final class Payments {
   $env=$credential['environment'];$db=Db::get($env);$application=(int)$credential['application_id'];
   $external=(string)($request['customer_id']??'');$sku=(string)($request['product_sku']??'');
   $email=(string)($request['email']??'');$name=(string)($request['name']??'');
+  // The new variable-price SKU is accepted ONLY from a signed staging
+  // iRadios request. The caller's quote/campaign scope is validated once.
+  $adScope=AdvertisingBudget::choice($request,$credential);
+  if($adScope!==null)AdvertisingBudget::ensure($credential);
   if(strlen($external)<1||strlen($external)>190||strlen($sku)<1||strlen($sku)>80||!filter_var($email,FILTER_VALIDATE_EMAIL)||strlen($email)>250||strlen($name)>250)
    throw new HttpError(422,'Customer/product validation failed');
   if(!preg_match('/^[A-Za-z0-9._:-]{1,128}$/D',$key)) throw new HttpError(422,'Idempotency-Key required');
@@ -18,7 +22,10 @@ final class Payments {
    BroadcasterStagingBootstrap::ensure($credential);
   $product=Db::one($db,'SELECT * FROM products WHERE application_id=? AND sku=? AND enabled=1',[$application,$sku]);
   if(!$product) throw new HttpError(422,'Unknown product');
-  if(isset($request['amount_cents']) && (int)$request['amount_cents']!==(int)$product['amount_cents'])throw new HttpError(422,'Price mismatch');
+  $checkoutAmount=$adScope!==null?$adScope['amount_cents']:(int)$product['amount_cents'];
+  if($adScope===null&&isset($request['amount_cents'])&&
+     (int)$request['amount_cents']!==(int)$product['amount_cents'])
+   throw new HttpError(422,'Price mismatch');
   if(isset($request['currency']) && $request['currency']!=='EUR')throw new HttpError(422,'Unsupported currency');
   $choice=SavedCards::choice($request,$env,$sku,(string)$credential['slug']);
   // Broadcaster mandates are isolated from the single-Listener contract.
@@ -32,6 +39,9 @@ final class Payments {
   if($winbackExpiredAt!==null&&($choice['save']||$choice['reuse']))
    throw new HttpError(422,'WINBACK_CANNOT_COMBINE_CIT');
   $canonical=['customer_id'=>$external,'product_sku'=>$sku,'email'=>$email,'name'=>$name];
+  if($adScope!==null){$canonical['campaign_id']=$adScope['campaign_id'];
+   $canonical['quote_id']=$adScope['quote_id'];
+   $canonical['amount_cents']=$checkoutAmount;$canonical['currency']='EUR';}
   if($choice['save']){$canonical['save_card']=true;$canonical['card_consent_version']=$choice['version'];}
   if($choice['reuse'])$canonical['use_saved_card']=true;
   if($recurring){$canonical['auto_renew']=true;
@@ -64,7 +74,9 @@ final class Payments {
    if($winbackExpiredAt!==null)
     Winback::preflight($db,$application,$cid,$winbackExpiredAt);
    $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
-   Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status) VALUES(?,?,?,?,?,?,?,?,'pending')",[$pid,$application,$cid,$product['id'],$order,$key,$hash,$product['amount_cents']]);
+   Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status) VALUES(?,?,?,?,?,?,?,?,'pending')",[$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount]);
+   if($adScope!==null)
+    AdvertisingBudget::record($db,$application,$cid,$pid,$adScope);
    if($choice['save']||$choice['reuse'])
     $recurrence=SavedCards::prepare($db,$application,$cid,$pid,
      NexiClient::providerCustomerId($external),$choice);
@@ -80,7 +92,7 @@ final class Payments {
   }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
   // Exactly one initial provider call. No automatic replay after error/timeout.
   try {
-   $res=NexiClient::forEnvironment($env)->startCheckout($order,(int)$product['amount_cents'],$external,$recurrence);
+   $res=NexiClient::forEnvironment($env)->startCheckout($order,$checkoutAmount,$external,$recurrence);
    $page=(string)($res['hostedPage']??'');$token=(string)($res['securityToken']??'');
    if(!filter_var($page,FILTER_VALIDATE_URL)||parse_url($page,PHP_URL_SCHEME)!=='https'||$token==='')throw new \RuntimeException('Unexpected provider HPP response');
    // Domain of checkout page must be whitelisted after merchant UAT; never expose an arbitrary URL.
@@ -283,6 +295,11 @@ final class Payments {
     $eventId=Security::id();$body=['event_id'=>$eventId,'event_type'=>'payment.'.$status,'payment_id'=>$p['id'],'order_id'=>$order,'customer_id'=>$p['customer_id'],'amount_cents'=>(int)$p['amount_cents'],'currency'=>'EUR',
       'product_sku'=>$product['sku']??'',
       'environment'=>$env,'occurred_at'=>gmdate('c')];
+    if($env==='staging'&&($product['sku']??null)===AdvertisingBudget::SKU){
+      $advertising=AdvertisingBudget::eventScope($db,$p['id']);
+      if($advertising===null)throw new \RuntimeException('Advertising payment scope missing');
+      $body=array_merge($body,$advertising);
+    }
     if($bScope){
       $body['resource_id']=$bScope['resource_id'];
       if(isset($bScope['billing_origin'])){

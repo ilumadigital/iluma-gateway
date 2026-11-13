@@ -17,7 +17,7 @@ final class CheckoutReturn {
   $kind=$path==='/checkout/cancel'?'cancel':'result';
   // The caller looks up the product from the stored Gateway order; the
   // browser cannot choose or override the return destination.
-  $route=$sku===AdvertisingBudget::SKU?'/agency/dashboard':
+  $route=$sku===AdvertisingBudget::SKU?'/agency/v2/campaigns':
    (str_starts_with((string)$sku,'BOOST-')?'/backoffice/boost':
    (in_array($sku,['B-PREM','ADD-DSP','ADD-AN','ADD-ADS'],true)
     ?'/backoffice/pro-features':'/premium'));

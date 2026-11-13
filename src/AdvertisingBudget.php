@@ -17,8 +17,9 @@ final class AdvertisingBudget {
  private static bool $ready=false;
 
  public static function permitted(array $credential):bool {
-  return BroadcasterStagingBootstrap::permitted($credential)
-   &&Config::get('ADVERTISING_SANDBOX_ENABLED')==='1';
+  // The signed iRadios staging credential and isolated tenant are the gate.
+  // Nexi remains in Sandbox; there is no second advertising-specific switch.
+  return BroadcasterStagingBootstrap::permitted($credential);
  }
  private static function isolated():bool {
   $staging=Config::get('STAGING_DSN');

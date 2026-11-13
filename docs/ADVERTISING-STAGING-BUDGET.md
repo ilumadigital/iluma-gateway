@@ -7,6 +7,7 @@ Development PR #17. This is a staging-only extension, not a production payment f
 - `customer_id` must match `iradios-stage-<24 hex>`; `campaign_id` and `quote_id` must each be 24 lowercase hex characters.
 - `amount_cents` must be a JSON integer in the permitted range; `currency` must be `EUR`.
 - Recurring mandates, card-on-file, saved cards and arbitrary redirect destinations are forbidden for advertising.
+- Gateway `ADVERTISING_STAGING_CHECKOUT_ENABLED=0` is the default. The operator must independently opt in with `=1` only after the staging tenant schema/product, tax policy, exact HMAC application credential and Nexi Sandbox preflight have been verified. The flag does not enable production advertising: `ADV-BUDGET` still requires `environment=staging` and `slug=iradiosgr` signed credentials. The shared Gateway web runtime may have `APP_ENV=production`; this does not make staging checkout a live Nexi transaction.
 - Other fixed-price product SKUs remain on their original checkout validation.
 - Payment scope is recorded atomically with `payments` in `advertising_budget_payments`; the quote ID and Gateway payment ID are unique and immutable.
 - Provider-verified paid/failed/canceled events add `campaign_id`, `quote_id` and `external_user_id` to the signed outgoing event.

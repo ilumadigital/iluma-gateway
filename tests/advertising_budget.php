@@ -10,6 +10,7 @@ function assertCase(bool $value,string $name):void{
 }
 putenv('APP_ENV=development');
 putenv('PRODUCTION_ENABLED=0');
+putenv('ADVERTISING_STAGING_CHECKOUT_ENABLED=1');
 $credential=['environment'=>'staging','slug'=>'iradiosgr','application_id'=>1];
 $base=['product_sku'=>'ADV-BUDGET','customer_id'=>'iradios-stage-'.str_repeat('a',24),
  'campaign_id'=>str_repeat('b',24),'quote_id'=>str_repeat('c',24),
@@ -28,10 +29,29 @@ foreach([
  catch(HttpError){$rejected=true;}
  assertCase($rejected,'Invalid advertising budget or consent rejected');
 }
+// A shared Gateway runtime can be production-enabled, but staging credentials
+// still ONLY use the sandbox; the independent advertising opt-in is mandatory.
+putenv('APP_ENV=production');
+putenv('PRODUCTION_ENABLED=1');
+assertCase(AdvertisingBudget::choice($credential,$base,'ADV-BUDGET')['amount_cents']===12500,
+ 'Explicit staging sandbox opt-in works on shared production-enabled host');
+putenv('ADVERTISING_STAGING_CHECKOUT_ENABLED=0');
+$disabled=false;
+try{AdvertisingBudget::choice($credential,$base,'ADV-BUDGET');}
+catch(HttpError){$disabled=true;}
+assertCase($disabled,'Gateway default switch prevents ADV-BUDGET even with staging key');
+putenv('ADVERTISING_STAGING_CHECKOUT_ENABLED=1');
 $rejected=false;
 try{AdvertisingBudget::choice(['environment'=>'production','slug'=>'iradiosgr'],
  $base,'ADV-BUDGET');}catch(HttpError){$rejected=true;}
 assertCase($rejected,'Production advertising budget is disabled');
+$rejected=false;
+try{AdvertisingBudget::choice(['environment'=>'staging','slug'=>'unrelated-app'],
+ $base,'ADV-BUDGET');}catch(HttpError){$rejected=true;}
+assertCase($rejected,'Sandbox advertising does not accept another tenant');
+putenv('ADVERTISING_STAGING_CHECKOUT_ENABLED=0');
+putenv('PRODUCTION_ENABLED=0');
+putenv('APP_ENV=development');
 $order='IL'.str_repeat('A',24);
 assertCase(str_contains(CheckoutReturn::url('staging','/checkout/result',$order,'ADV-BUDGET'),
  '/agency/v2/campaigns?gateway_return=result'),'Advertising return is agency-scoped');

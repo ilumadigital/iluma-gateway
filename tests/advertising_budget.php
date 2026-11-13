@@ -56,6 +56,13 @@ $order='IL'.str_repeat('A',24);
 assertCase(str_contains(CheckoutReturn::url('staging','/checkout/result',$order,'ADV-BUDGET'),
  '/agency/v2/campaigns?gateway_return=result'),'Advertising return is agency-scoped');
 
+$paymentSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
+assertCase(is_string($paymentSource)&&
+ str_contains($paymentSource, "AdvertisingBudget::SKU?")&&
+ strpos($paymentSource,'SELECT sku FROM products')<
+ strpos($paymentSource,'AdvertisingBudget::eventScope($db'),
+ 'Missing advertising schema cannot affect existing premium and broadcaster payment reconciliation');
+
 $sql=file_get_contents(dirname(__DIR__).'/database/migrations/2026-11-staging-advertising-budget.sql');
 assertCase(is_string($sql)&&
  str_contains($sql,'SET @iradios_staging_application_id = NULL;')&&

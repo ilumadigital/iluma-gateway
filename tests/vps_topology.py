@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 
 root = Path(__file__).resolve().parents[1]
-command = ["docker", "compose", "-f", str(root / "compose.vps.yml"),
+command = ["docker", "compose", "--profile", "worker", "-f", str(root / "compose.vps.yml"),
            "config", "--format", "json"]
 result = subprocess.run(command, check=True, capture_output=True, text=True, cwd=root)
 config = json.loads(result.stdout)

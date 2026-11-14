@@ -108,4 +108,4 @@ volumes:
 networks:
   gateway_internal:
     name: iluma_gateway_internal
-    internal: true
+    driver: bridge

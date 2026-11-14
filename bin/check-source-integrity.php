@@ -12,7 +12,13 @@ use Iluma\Gateway\SourceIntegrity;
 
 $status = SourceIntegrity::inspect(dirname(__DIR__));
 if ($status['ok']) {
-    echo "PASS: canonical Admin source matches the approved Git blob\n";
+    echo "PASS: active Admin source matches the approved Git blob\n";
+    $legacy = SourceIntegrity::inspectLegacy(dirname(__DIR__));
+    if (!$legacy['ok']) {
+        // The legacy filename is NOT on the live HTTP execution path.
+        fwrite(STDERR, sprintf("WARN: unused legacy AdminController.php was modified (reason=%s actual=%s); investigate external writer\n",
+            $legacy['reason'], $legacy['actual']));
+    }
     exit(0);
 }
 fwrite(STDERR, sprintf(

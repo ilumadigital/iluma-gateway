@@ -19,6 +19,8 @@ expectIntegrity($source !== false, 'canonical source available');
 expectIntegrity(SourceIntegrity::gitBlob($source) === SourceIntegrity::ADMIN_GIT_BLOB,
     'pinned blob matches reviewed source in CI');
 expectIntegrity(SourceIntegrity::inspect($root)['ok'], 'checked out source is intact');
+expectIntegrity(SourceIntegrity::inspectLegacy($root)['ok'],
+    'legacy shim matches its reviewed Git blob');
 
 // A throwaway fixture proves that deletion, replacement and symlinks cannot be
 // silently treated as a valid release. Never mutate files in the repository.
@@ -28,6 +30,16 @@ $copy = $temp.'/'.SourceIntegrity::ADMIN_FILE;
 try {
     expectIntegrity(file_put_contents($copy, $source) === strlen($source), 'fixture written');
     expectIntegrity(SourceIntegrity::inspect($temp)['ok'], 'intact fixture accepted');
+    $legacyCopy = $temp.'/'.SourceIntegrity::LEGACY_FILE;
+    $legacySource = file_get_contents($root.'/'.SourceIntegrity::LEGACY_FILE);
+    expectIntegrity($legacySource !== false &&
+        file_put_contents($legacyCopy, $legacySource) === strlen($legacySource),
+        'legacy canary fixture copied');
+    expectIntegrity(SourceIntegrity::inspectLegacy($temp)['ok'], 'intact legacy canary accepted');
+    file_put_contents($legacyCopy, "<?php }");
+    expectIntegrity(!SourceIntegrity::inspectLegacy($temp)['ok'] &&
+        SourceIntegrity::inspect($temp)['ok'],
+        'legacy controller corruption does not corrupt canonical application');
     file_put_contents($copy, substr($source, 0, 120)."\n}\n");
     $bad = SourceIntegrity::inspect($temp);
     expectIntegrity(!$bad['ok'] && $bad['reason'] === 'git-blob-mismatch',
@@ -41,6 +53,7 @@ try {
     }
 } finally {
     if (is_link($copy) || is_file($copy)) unlink($copy);
+    if (isset($legacyCopy) && is_file($legacyCopy)) unlink($legacyCopy);
     rmdir($temp.'/src');
     rmdir($temp);
 }

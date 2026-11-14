@@ -20,7 +20,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 DBS = {"iluma_registry", "iluma_staging", "iluma_production"}
 BLOCK = re.compile(rb"(?im)^\s*(?:CREATE|DROP|ALTER)\s+DATABASE\b|^\s*USE\s+|^\s*(?:CREATE|ALTER|DROP)\s+USER\b|^\s*(?:GRANT|REVOKE|SET\s+GLOBAL|FLUSH\s+PRIVILEGES)\b")
-CREATE = re.compile(rb"(?im)^\\s*CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?`?([A-Za-z0-9_]+)`?")
+CREATE = re.compile(rb"(?im)^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?")
 CORE = {
     "iluma_registry": {"applications", "application_credentials", "nexi_credentials", "admin_users"},
     "iluma_staging": {"customers", "products", "payments", "outgoing_events", "event_deliveries"},

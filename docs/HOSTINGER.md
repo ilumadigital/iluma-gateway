@@ -493,3 +493,51 @@ hosting access and credentials with Hostinger.
    event is delivered. Do not create a duplicate checkout for diagnosis.
 5. Continue to monitor integrity and ask Hostinger for writer attribution
    if the file is modified again. Green tests are not a root-cause proof.
+
+
+## 2026-11-14: Active Admin cutover away from repeatedly rewritten filename
+
+The recurring Hostinger file rewrite affects the old src/AdminController.php
+path. The canonical Admin implementation now lives in src/AdminApplication.php,
+and the only public entrypoint public/admin.php requires that private file
+directly. The old AdminController.php is now an UNUSED short compatibility
+shim. A source rewrite of ONLY that legacy path must no longer cause the
+live /ilm-admin/ route to fail. This is an AVAILABILITY MITIGATION,
+NOT proof that the writer is stopped or the hosting account is secure.
+
+The read-only integrity checker monitors ACTIVE AdminApplication source and
+reports legacy-source corruption as a warning. The payment worker logs active
+and legacy drift independently. The preflight fails on unexpected drift of
+active code and only warns on a changed unused legacy shim. None of the
+checks repairs files or modifies payment records.
+
+After merging and manually redeploying the main branch in Hostinger hPanel:
+
+    cd "$HOME/domains/gateway.iluma.gr/public_html"
+    git rev-parse --short HEAD
+    php -l public/admin.php
+    php -l src/AdminApplication.php
+    php bin/check-source-integrity.php
+    bash bin/check-hostinger-deploy.sh --live
+
+If the old file is still rewritten but AdminApplication.php stays intact,
+the Admin should remain functional while the writer is investigated. Confirm
+the actual web login loads. If the new active code is also modified,
+the source writer is NOT contained.
+
+Potential Hostinger malware cleanup: hPanel offers Websites > Manage site >
+Security > Malware Scanner > Infected files, including recorded Cleaned or
+Deleted actions. Check for AdminController.php and timestamps. Hostinger's
+automatic Monarx scanner can clean code it classifies as malicious; false
+positive is one plausible explanation for identical recurring changes.
+However this cannot be attributed to Monarx without its action history.
+If flagged, provide Hostinger the reviewed Git SHA and expected/actual hashes
+and request a false-positive investigation, not disabling all protections.
+
+For true prevention, deploy under a distinct identity from the web PHP and
+worker runtime, with read-only source files for the runtime and state/logs
+stored outside the Git source tree. chmod 444 alone is not sufficient on
+shared hosting where the account also controls writable parent directories.
+If isolation and filesystem write attribution are unavailable at Hostinger,
+migrate to a hardened isolated VPS with separate deploy/runtime users.
+Preserve DBs, payment ledger and pending outbox during migration.

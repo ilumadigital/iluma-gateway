@@ -394,3 +394,102 @@ payment states or Nexi transactions as a workaround. Never blindly use
 
 GitHub CI prevents new duplicate versioned admin PHP files and tests the
 one public/admin.php controller before merge.
+
+
+## 2026-11-14: recurring AdminController.php corruption / HTTP 500
+
+### Observed incident; cron correlation is not attribution
+
+The Hostinger LiteSpeed web runtime repeatedly returned HTTP 500 with
+"PHP Parse error: Unmatched '}' in src/AdminController.php on line 16".
+A targeted Git restore recovered the correct blob, but the file was modified
+again within approximately a minute. The observed diff deleted a block of PHP
+after the canonical admin entry header. The deployed commit was 5d8a8df
+and the clean canonical Admin Git blob was
+7ebf87690f7411589eb5e11214b76f8ff577ab33.
+
+The staging worker also runs every minute, but correlation is NOT proof that
+it writes the file. Its inspected runtime code does DB operations and
+authenticated outgoing HTTPS; the entrypoint uses a temporary flock lock.
+Do NOT permanently disable the Hostinger cron: it delivers confirmed events.
+
+### Safe read-only integrity checks
+
+From the Hostinger SSH checkout, run:
+
+    php bin/check-source-integrity.php
+    php -l src/AdminController.php
+    git diff -- src/AdminController.php
+    git status --short
+    bash bin/check-hostinger-deploy.sh --live
+
+The independent check-source-integrity.php checks the file even when the PHP
+controller cannot parse, without Git metadata, a database, ENV, or Nexi.
+It compares the actual source to a pinned, reviewed Git blob. After approved
+Admin controller changes, update SourceIntegrity::ADMIN_GIT_BLOB in the same
+PR: CI fails when the expected blob does not match the reviewed source.
+
+The worker now checks that fingerprint at startup and shutdown. When it sees
+a mismatch it logs ILUMA SOURCE INTEGRITY ALERT with the actual blob hash,
+UTC mtime and inode. This is DETECTION ONLY: it does not repair source,
+alter financial records, or block pending signed payment event delivery.
+Clean checks do not prove that the source will remain unmodified.
+
+Missing CLI sodium produces an explicit failure instead of leaving signed
+events pending silently. Verify the exact PHP runtime used by Hostinger cron:
+
+    /opt/alt/php84/usr/bin/php -r 'echo extension_loaded("sodium") ? "SODIUM OK\n" : "SODIUM MISSING\n";'
+    /opt/alt/php84/usr/bin/php bin/manage.php doctor-http
+
+Enable sodium in the actual worker runtime if it is missing. Do not change
+credentials, API secrets, prices or payment states to compensate.
+
+### Preserve evidence before targeted restoration
+
+Capture stat, git diff, PHP error log and deployment timeline before restore:
+
+    stat -c '%n inode=%i owner=%U mode=%a mtime=%y ctime=%z' src/AdminController.php
+    git diff -- src/AdminController.php
+
+Then restore ONLY the damaged tracked source from the already-reviewed Git
+checkout, never the whole repository:
+
+    git restore --source=HEAD --worktree -- src/AdminController.php
+    php -l src/AdminController.php
+    php bin/check-source-integrity.php
+
+Never blindly reset --hard, regenerate MASTER_KEY_B64, or build an automatic
+self-healing cron that overwrites evidence. The deploy preflight now avoids
+Bash process substitution (/dev/fd/63) and uses IPv4 for the live probe:
+the hosting server was observed resetting TLS handshakes over IPv6.
+
+### Hostinger must attribute the file writer
+
+Ask Hostinger Support to identify the process behind writes around
+2026-11-14 12:41:27 UTC and subsequent changes to
+src/AdminController.php: process/PID, effective UID, entry point, Git
+deployment hooks, cron scheduler, SSH/SFTP, File Manager, LiteSpeed/PHP and
+filesystem audit history. The inode/mtime and one-minute timing do not
+prove which process made the edit.
+
+The permanent prevention is to separate deployment identity from the PHP web
+and worker identities; the runtime should have no source-tree write access,
+and state/logs should be stored outside the source tree. On shared hosting
+where PHP, Git deployment and SSH use the same account identity, chmod 444
+alone is not reliable protection: a writable parent directory can allow
+replacement of the file. If Hostinger cannot provide trustworthy write
+isolation and audit history, move the payment gateway to an isolated hardened
+VPS with separate release/deploy and runtime users. Review unauthorized
+hosting access and credentials with Hostinger.
+
+### Release procedure
+
+1. Merge a reviewed PR after PHP 8.3 and 8.4 CI checks pass.
+2. In Hostinger hPanel manually Redeploy from Git for gateway.iluma.gr;
+   Git push alone does not deploy to production.
+3. Verify the deployed commit and run the standalone source integrity
+   check, the deployment preflight and the IPv4 live HTTP smoke test.
+4. Check Admin login HTTP 200 and verify an existing signed staging webhook
+   event is delivered. Do not create a duplicate checkout for diagnosis.
+5. Continue to monitor integrity and ask Hostinger for writer attribution
+   if the file is modified again. Green tests are not a root-cause proof.

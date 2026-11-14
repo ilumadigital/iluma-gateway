@@ -118,20 +118,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo install -d -m 0700 /etc/iluma-gateway
-          printf 'ci-not-a-real-password\n' | sudo tee /etc/iluma-gateway/mysql-root.password >/dev/null
-          sudo chmod 600 /etc/iluma-gateway/mysql-root.password
+          sudo install -d -m 0700 /root/gateway-migration
           {
-            echo APP_ENV=development
-            echo GATEWAY_HOST=gateway.iluma.gr
-            echo PRODUCTION_ENABLED=0
             echo MASTER_KEY_B64=S0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0s=
-          } | sudo tee /etc/iluma-gateway/iluma-gateway.env >/dev/null
-          sudo chown 33:33 /etc/iluma-gateway/iluma-gateway.env
-          sudo chmod 600 /etc/iluma-gateway/iluma-gateway.env
+            echo NEXI_STAGING_BASE=https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp
+            echo NEXI_PRODUCTION_BASE=https://xpay.nexigroup.com/api/phoenix-0.0/psp
+            echo IRADIOS_STAGING_WEBHOOK=https://stage.iradios.gr/api/gateway/webhook
+            echo IRADIOS_PRODUCTION_WEBHOOK=https://play.iradios.gr/api/gateway/webhook
+          } | sudo tee /root/gateway-migration/old-gateway.env >/dev/null
+          sudo chmod 600 /root/gateway-migration/old-gateway.env
+          sudo python3 deploy/vps/prepare-secrets.py /root/gateway-migration/old-gateway.env
           docker compose -f compose.vps.yml build php web
           trap 'docker compose -f compose.vps.yml down' EXIT
           docker compose -f compose.vps.yml up -d db php web
+          sudo python3 deploy/vps/provision-db.py
+          sudo cp database/registry.sql /root/gateway-migration/registry.sql
+          sudo cp database/tenant.sql /root/gateway-migration/staging.sql
+          sudo cp database/tenant.sql /root/gateway-migration/production.sql
+          for entry in "iluma_registry registry" "iluma_staging staging" "iluma_production production"; do
+            read -r database name <<< "$entry"
+            archive="/root/gateway-migration/$name.sql"
+            sudo python3 deploy/vps/import-db.py "$database" "$archive"
+            digest="$(sudo sha256sum "$archive" | awk '{print $1}')"
+            sudo python3 deploy/vps/import-db.py "$database" "$archive" --apply --sha256 "$digest"
+          done
+          docker compose -f compose.vps.yml exec -T php php bin/vps-ledger-audit.php
           ready=0
           for i in $(seq 1 45); do
             status="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -H 'Host: gateway.iluma.gr' http://127.0.0.1:5561/ilm-admin/ || true)"

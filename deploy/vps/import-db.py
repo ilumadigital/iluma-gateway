@@ -20,7 +20,12 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 DBS = {"iluma_registry", "iluma_staging", "iluma_production"}
 BLOCK = re.compile(rb"(?im)^\s*(?:CREATE|DROP|ALTER)\s+DATABASE\b|^\s*USE\s+|^\s*(?:CREATE|ALTER|DROP)\s+USER\b|^\s*(?:GRANT|REVOKE|SET\s+GLOBAL|FLUSH\s+PRIVILEGES)\b")
-CREATE = re.compile(rb"(?im)^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?")
+CREATE = re.compile(rb"(?im)^\\s*CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?`?([A-Za-z0-9_]+)`?")
+CORE = {
+    "iluma_registry": {"applications", "application_credentials", "nexi_credentials", "admin_users"},
+    "iluma_staging": {"customers", "products", "payments", "outgoing_events", "event_deliveries"},
+    "iluma_production": {"customers", "products", "payments"},
+}
 MAX_SQL = 25 * 1024 * 1024 * 1024
 
 
@@ -102,21 +107,24 @@ def main():
         size, checksum = extract_stream(path, plain)
         if size < 100:
             raise ValueError("Invalid or empty SQL export")
-        table_count = 0
+        tables = set()
         with plain.open("rb") as source:
             for line in source:
                 if len(line) > 64 * 1024 * 1024:
                     raise ValueError("SQL line exceeds safety threshold")
                 if BLOCK.search(line):
                     raise ValueError("Database/privilege-changing SQL detected; inspect export manually")
-                if CREATE.search(line):
-                    table_count += 1
+                match = CREATE.search(line)
+                if match:
+                    tables.add(match.group(1).decode("ascii").lower())
         print(f"Database: {args.database}")
         print(f"Plaintext bytes: {size}")
         print(f"Export SHA256: {checksum}")
-        print(f"CREATE TABLE statements: {table_count}")
-        if table_count == 0:
-            raise ValueError("Expected a full structure+data phpMyAdmin export")
+        print(f"CREATE TABLE entries: {len(tables)}")
+        print(f"Expected core tables present: {len(CORE[args.database] & tables)}/{len(CORE[args.database])}")
+        missing = CORE[args.database] - tables
+        if missing:
+            raise ValueError("Export is missing required tenant tables: " + ", ".join(sorted(missing)))
         if not args.apply:
             print("INSPECT ONLY. Database remains unchanged.")
             return
@@ -129,7 +137,7 @@ def main():
         if apply_dump(args.database, plain):
             raise RuntimeError("Import failed; database may now be partially populated. Do NOT rerun blindly.")
         status = mysql(query)
-        if status.returncode or int(status.stdout.strip()) < table_count:
+        if status.returncode or int(status.stdout.strip()) < len(tables):
             raise RuntimeError("Imported table count mismatch; investigate privately")
         print("PASS: import into empty tenant; verify payment totals/outbox before enabling worker")
 

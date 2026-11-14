@@ -72,6 +72,9 @@ jobs:
       - name: Exercise Hostinger deployment-integrity preflight
         run: bash bin/check-hostinger-deploy.sh
 
+      - name: Verify pinned Admin source and corruption detection
+        run: php tests/source_integrity.php
+
       - name: Test missing CSRF rejection
         run: php tests/admin_security.php
 

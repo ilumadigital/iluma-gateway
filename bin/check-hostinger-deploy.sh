@@ -50,16 +50,20 @@ if find public -maxdepth 1 -type f -name 'admin_*.php' | grep -q . ||
   exit 1
 fi
 
-count=0
-while IFS= read -r -d '' file; do
-  if ! php -d display_errors=1 -l "$file" >/dev/null 2>&1; then
-    echo "FAIL: PHP syntax: $file"
-    php -d display_errors=1 -l "$file" 2>&1 || true
-    exit 1
-  fi
-  count=$((count + 1))
-done < <(find src public bin tests -type f -name '*.php' -print0)
+# Hostinger's restricted Bash runtime may not expose /dev/fd (process
+# substitution). Use portable find -exec; a failed lint exits nonzero.
+find src public bin tests -type f -name '*.php' -exec sh -c '
+  for file do
+    if ! php -d display_errors=1 -l "$file" >/dev/null 2>&1; then
+      echo "FAIL: PHP syntax: $file"
+      php -d display_errors=1 -l "$file" 2>&1 || true
+      exit 1
+    fi
+  done
+' sh {} +
+count="$(find src public bin tests -type f -name '*.php' -print | wc -l | tr -d '[:space:]')"
 echo "PASS: PHP syntax ($count files)"
+php bin/check-source-integrity.php
 
 for request in '/ilm-admin/' '/ilm-admin/?p=payments'; do
   if ! output="$(GATEWAY_HOST=gateway.iluma.gr php -d display_errors=1 -r '
@@ -90,7 +94,7 @@ if [[ "${1:-}" == "--live" ]]; then
   command -v curl >/dev/null || { echo 'FAIL: curl CLI missing'; exit 1; }
   headers="$(mktemp)"
   trap 'rm -f "$headers"' EXIT
-  status="$(curl --silent --show-error --max-time 15 --dump-header "$headers" \
+  status="$(curl --ipv4 --silent --show-error --max-time 15 --dump-header "$headers" \
     --output /dev/null --write-out '%{http_code}' \
     'https://gateway.iluma.gr/ilm-admin/?p=payments')" || {
     echo 'FAIL: live admin unreachable'

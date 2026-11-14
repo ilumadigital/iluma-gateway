@@ -5,6 +5,22 @@ use Iluma\Gateway\{Worker,Db,Config};
 if(PHP_SAPI!=='cli')exit(1);
 $env=$argv[1]??'';if(!in_array($env,['staging','production'],true))die("Usage: php bin/work.php staging|production\n");
 if($env==='production'&&!Config::liveAllowed())die("Production locked\n");
+// An independent, read-only fingerprint records unexpected PHP source edits.
+// Do not auto-restore code: that would destroy forensic evidence. The worker
+// must continue to deliver already confirmed, signed payment events.
+$projectRoot=dirname(__DIR__);
+\Iluma\Gateway\SourceIntegrity::logIfDrift($projectRoot,'worker-start');
+register_shutdown_function(static function () use ($projectRoot): void {
+    \Iluma\Gateway\SourceIntegrity::logIfDrift($projectRoot,'worker-shutdown');
+});
+
+// This worker signs outgoing events using libsodium. Fail clearly instead of
+// silently leaving queued payment events pending on the wrong Hostinger PHP CLI.
+if (!extension_loaded('sodium')) {
+    error_log('ILUMA WORKER: PHP sodium extension missing; staging webhook delivery unavailable in this CLI');
+    fwrite(STDERR,"FAIL: PHP sodium extension missing in worker CLI; select a PHP binary with sodium enabled\n");
+    exit(1);
+}
 $lock=fopen(sys_get_temp_dir().'/iluma-worker-'.$env.'.lock','c');
 if(!flock($lock,LOCK_EX|LOCK_NB))die("Worker already running\n");
 // Flush already-confirmed payment events FIRST. Slow reconciliation of old unknown

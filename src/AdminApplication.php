@@ -9,7 +9,7 @@ $host=strtolower(explode(':',$_SERVER['HTTP_HOST']??'')[0]);
 if($host!==Config::get('GATEWAY_HOST')||!in_array(parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH),['/ilm-admin','/ilm-admin/'],true)){http_response_code(404);exit('Not found');}
 header('X-Content-Type-Options: nosniff');header('Referrer-Policy: no-referrer');header('X-Frame-Options: DENY');
 header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
-header("Content-Security-Policy: default-src 'none'; style-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; img-src 'self' https://iluma.gr; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+header("Content-Security-Policy: default-src 'none'; style-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; img-src 'self' https://iluma.gr; connect-src 'self' https://challenges.cloudflare.com; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
 header('Cache-Control: private, no-store, max-age=0');
 // Non-sensitive build marker verifies the actual web PHP entrypoint after Hostinger deploy.
 header('X-ILUMA-Admin-Entry: canonical');

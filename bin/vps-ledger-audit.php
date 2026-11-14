@@ -15,8 +15,8 @@ $sets = [
 foreach ($sets as $environment => $tables) {
     try {
         $db = Db::get($environment);
-        $present = Db::all($db, "SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE()");
-        $names = array_fill_keys(array_column($present, 'table_name'), true);
+        $present = Db::all($db, "SELECT TABLE_NAME AS name FROM information_schema.tables WHERE table_schema=DATABASE()");
+        $names = array_fill_keys(array_column($present, 'name'), true);
         echo strtoupper($environment)." TABLES=".count($names).PHP_EOL;
         foreach ($tables as $table) {
             if (!isset($names[$table])) {

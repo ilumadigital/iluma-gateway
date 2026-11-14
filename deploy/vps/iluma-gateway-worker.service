@@ -3,6 +3,7 @@ Description=ILUMA Gateway staging payment outbox/reconciliation (one shot)
 Requires=docker.service
 After=docker.service
 ConditionPathExists=/etc/iluma-gateway/iluma-gateway.env
+ConditionPathExists=/etc/iluma-gateway/worker.enabled
 
 [Service]
 Type=oneshot

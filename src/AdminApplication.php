@@ -4,12 +4,12 @@ declare(strict_types=1);
 // The legacy AdminController.php file is no longer on the execution path.
 // Keep payment APIs on the independent public/index.php route.
 require dirname(__DIR__).'/src/bootstrap.php';
-use Iluma\Gateway\{Config,Db,Security,NexiClient,PaymentState,Payments,HttpError};
+use Iluma\Gateway\{Config,Db,Security,NexiClient,PaymentState,Payments,HttpError,AdminTurnstile,AdminLoginState};
 $host=strtolower(explode(':',$_SERVER['HTTP_HOST']??'')[0]);
 if($host!==Config::get('GATEWAY_HOST')||!in_array(parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH),['/ilm-admin','/ilm-admin/'],true)){http_response_code(404);exit('Not found');}
 header('X-Content-Type-Options: nosniff');header('Referrer-Policy: no-referrer');header('X-Frame-Options: DENY');
 header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
-header("Content-Security-Policy: default-src 'none'; style-src 'self'; script-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+header("Content-Security-Policy: default-src 'none'; style-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
 header('Cache-Control: private, no-store, max-age=0');
 // Non-sensitive build marker verifies the actual web PHP entrypoint after Hostinger deploy.
 header('X-ILUMA-Admin-Entry: canonical');
@@ -49,7 +49,8 @@ final class AdminPageView {
  $nav.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="environment"><select name="environment"><option value="staging"'.($environment==='staging'?' selected':'').'>STAGING</option><option value="production"'.($environment==='production'?' selected':'').'>PRODUCTION</option></select><button>Επιλογή</button></form>';
  }
  $mfaDialog=$user?'<dialog id="mfa-dialog" class="mfa-dialog" aria-labelledby="mfa-title" aria-describedby="mfa-description"><div class="mfa-sheet"><div class="mfa-icon">✳</div><h2 id="mfa-title">Επιβεβαίωση ενέργειας</h2><p id="mfa-description">Άνοιξε το Google Authenticator και βάλε τον 6ψήφιο κωδικό. Η ενέργεια δεν εκτελείται πριν επιβεβαιώσεις.</p><p class="mfa-action-label" id="mfa-action-label"></p><label for="mfa-code">Κωδικός επιβεβαίωσης</label><input id="mfa-code" class="mfa-code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000"><p id="mfa-validation" class="mfa-validation" role="alert" hidden>Συμπλήρωσε έναν 6ψήφιο κωδικό.</p><div class="mfa-actions"><button type="button" class="button-secondary" id="mfa-cancel">Άκυρο</button><button type="button" id="mfa-confirm">Επιβεβαίωση</button></div></div></dialog>':'';
- echo '<!doctype html><html lang="el"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.html($title).' — ILUMA</title><link rel="stylesheet" href="/ilm-admin/admin.css"></head><body class="'.($user?'is-authenticated':'is-login').'"><header><strong class="brand-mark">ILUMA<span> / GATEWAY</span></strong><span>'.($user?html(strtoupper($environment)).' — '.($environment==='staging'?'TEST ENVIRONMENT':'LIVE DATA (CHARGES LOCKED BY DEFAULT)'):'Προστατευμένη πρόσβαση').'</span></header><div class="layout"><aside aria-label="Πλοήγηση διαχειριστικού">'.$nav.'</aside><main id="main-content"><h1>'.html($title).'</h1>'.($error?'<p class="alert" role="alert">'.html($error).'</p>':'').($notice?'<p class="notice" role="status">'.html($notice).'</p>':'').$body.'</main></div>'.$mfaDialog.'<script defer src="/ilm-admin/admin.js"></script></body></html>';exit;
+ $turnstileScript=(!$user && AdminLoginState::current((string)($_SERVER['REMOTE_ADDR']??''))===null && AdminTurnstile::configured())?'<script defer src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script>':'';
+ echo '<!doctype html><html lang="el"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.html($title).' — ILUMA</title><link rel="stylesheet" href="/ilm-admin/admin.css"></head><body class="'.($user?'is-authenticated':'is-login').'"><header><strong class="brand-mark">ILUMA<span> / GATEWAY</span></strong><span>'.($user?html(strtoupper($environment)).' — '.($environment==='staging'?'TEST ENVIRONMENT':'LIVE DATA (CHARGES LOCKED BY DEFAULT)'):'Προστατευμένη πρόσβαση').'</span></header><div class="layout"><aside aria-label="Πλοήγηση διαχειριστικού">'.$nav.'</aside><main id="main-content"><h1>'.html($title).'</h1>'.($error?'<p class="alert" role="alert">'.html($error).'</p>':'').($notice?'<p class="notice" role="status">'.html($notice).'</p>':'').$body.'</main></div>'.$mfaDialog.'<script defer src="/ilm-admin/admin.js"></script>'.$turnstileScript.'</body></html>';exit;
  }
 }
 try {
@@ -58,18 +59,67 @@ try {
   $reg=Db::get('registry');
   Security::verifyCsrf();$action=$_POST['action']??'';
   if($action==='login'){
+   AdminLoginState::clear();
    $ip=(string)($_SERVER['REMOTE_ADDR']??'');
    $recent=Db::one($reg,"SELECT COUNT(*) AS total FROM audit_logs WHERE action='admin_login_failed' AND ip=? AND created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 15 MINUTE)",[$ip]);
    if((int)($recent['total']??0)>=15){
     http_response_code(429);
     AdminPageView::render('Πολλές απόπειρες σύνδεσης','<p>Προσπαθήστε ξανά αργότερα.</p>');
    }
-   $email=(string)($_POST['email']??'');$pw=(string)($_POST['password']??'');
-   $u=Db::one($reg,'SELECT * FROM admin_users WHERE email=? AND enabled=1',[$email]);
-   $allowed=$u && (!$u['locked_until']||strtotime($u['locked_until'].' UTC')<time());
-   $success=$allowed && password_verify($pw,$u['passhash']);
-   if(!$success){if($u){Db::exec($reg,'UPDATE admin_users SET failed_attempts=failed_attempts+1,locked_until=IF(failed_attempts>=4,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 15 MINUTE),locked_until) WHERE id=?',[$u['id']]);}audit('admin_login_failed','backoffice');$error='Αποτυχία σύνδεσης.';}
-   else{session_regenerate_id(true);$_SESSION['admin_id']=$u['id'];$_SESSION['since']=time();$_SESSION['last']=time();$_SESSION['view_env']='staging';Db::exec($reg,'UPDATE admin_users SET failed_attempts=0,locked_until=NULL,last_login_at=UTC_TIMESTAMP() WHERE id=?',[$u['id']]);audit('login','backoffice');header('Location: /ilm-admin/');exit;}
+   $token=$_POST['cf-turnstile-response']??'';
+   if(!is_string($token)||!AdminTurnstile::verify($token,$ip)){
+    audit('admin_login_failed','turnstile');
+    $error='Η επαλήθευση ασφαλείας απέτυχε. Δοκίμασε ξανά.';
+   } else {
+    $email=(string)($_POST['email']??'');$pw=(string)($_POST['password']??'');
+    $u=Db::one($reg,'SELECT * FROM admin_users WHERE email=? AND enabled=1',[$email]);
+    $allowed=$u && (!$u['locked_until']||strtotime($u['locked_until'].' UTC')<time());
+    $success=$allowed && password_verify($pw,$u['passhash']);
+    if(!$success){
+     if($u){Db::exec($reg,'UPDATE admin_users SET failed_attempts=failed_attempts+1,locked_until=IF(failed_attempts>=4,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 15 MINUTE),locked_until) WHERE id=?',[$u['id']]);}
+     audit('admin_login_failed','backoffice');$error='Αποτυχία σύνδεσης.';
+    } else {
+     // A password alone never creates an authenticated administrator session.
+     session_regenerate_id(true);
+     AdminLoginState::begin((int)$u['id'],$ip);
+     header('Location: /ilm-admin/');exit;
+    }
+   }
+  } elseif($action==='login-otp'){
+   $ip=(string)($_SERVER['REMOTE_ADDR']??'');
+   $pending=AdminLoginState::current($ip);
+   if($pending===null){
+    $error='Η επιβεβαίωση έληξε. Συνδέσου ξανά.';
+   } else {
+    $recent=Db::one($reg,"SELECT COUNT(*) AS total FROM audit_logs WHERE action='admin_login_failed' AND ip=? AND created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 15 MINUTE)",[$ip]);
+    if((int)($recent['total']??0)>=15){
+     AdminLoginState::clear();
+     http_response_code(429);
+     AdminPageView::render('Πολλές απόπειρες σύνδεσης','<p>Προσπαθήστε ξανά αργότερα.</p>');
+    }
+    $u=Db::one($reg,'SELECT * FROM admin_users WHERE id=? AND enabled=1',[$pending['admin_id']]);
+    $allowed=$u && (!$u['locked_until']||strtotime($u['locked_until'].' UTC')<time());
+    $otp=$_POST['otp']??'';
+    $valid=$allowed && is_string($otp) && Security::otpVerify(Security::decrypt($u['totp_secret_box']),$otp);
+    if(!$valid){
+     if($u){Db::exec($reg,'UPDATE admin_users SET failed_attempts=failed_attempts+1,locked_until=IF(failed_attempts>=4,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 15 MINUTE),locked_until) WHERE id=?',[$u['id']]);}
+     $fails=AdminLoginState::failed($ip);
+     audit('admin_login_failed','mfa');
+     $error=$fails>=5||!$allowed?'Η σύνδεση απορρίφθηκε. Ξεκίνα ξανά.':'Ο κωδικός Google Authenticator δεν είναι έγκυρος.';
+     if(!$allowed)AdminLoginState::clear();
+    } else {
+     AdminLoginState::clear();
+     session_regenerate_id(true);
+     $_SESSION['admin_id']=(int)$u['id'];
+     $_SESSION['since']=time();$_SESSION['last']=time();$_SESSION['view_env']='staging';
+     Db::exec($reg,'UPDATE admin_users SET failed_attempts=0,locked_until=NULL,last_login_at=UTC_TIMESTAMP() WHERE id=?',[$u['id']]);
+     audit('login','backoffice');
+     header('Location: /ilm-admin/');exit;
+    }
+   }
+  } elseif($action==='login-reset'){
+   AdminLoginState::clear();
+   header('Location: /ilm-admin/');exit;
   } elseif($action==='logout'){if(!empty($_SESSION['admin_id']))audit('logout','backoffice');$_SESSION=[];session_destroy();header('Location: /ilm-admin/');exit;}
   elseif(empty($_SESSION['admin_id']))throw new HttpError(403,'Not authenticated');
   elseif($action==='environment'){if(!in_array($_POST['environment']??'', ['staging','production'],true))throw new HttpError(422,'Invalid environment');$_SESSION['view_env']=$_POST['environment'];header('Location: /ilm-admin/');exit;}
@@ -100,7 +150,17 @@ try {
   }
  }
  if(empty($_SESSION['admin_id'])){
-  $csrf=Security::csrf();$form='<form class="login" method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="login"><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Κωδικός<input name="password" type="password" required autocomplete="current-password"></label><p class="login-hint">Το Google Authenticator ζητείται μόνο όταν επιβεβαιώνεις μια ευαίσθητη ενέργεια.</p><button>Σύνδεση</button></form>';
+  $csrf=Security::csrf();
+  $pending=AdminLoginState::current((string)($_SERVER['REMOTE_ADDR']??''));
+  if($pending!==null){
+   $form='<form class="login login-otp" method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="login-otp"><div class="mfa-icon" aria-hidden="true">✳</div><p class="login-hint">Άνοιξε το Google Authenticator και πληκτρολόγησε τον 6ψήφιο κωδικό για να ολοκληρώσεις τη σύνδεση.</p><label>6ψήφιος κωδικός<input class="login-otp-code" name="otp" type="text" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="000000" required autofocus></label><button>Επιβεβαίωση και σύνδεση</button></form>';
+   $form.='<form class="login-back" method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="login-reset"><button type="submit" class="button-secondary">Επιστροφή στη σύνδεση</button></form>';
+   AdminPageView::render('Επιβεβαίωση Google Authenticator',$form,$error);
+  }
+  $ready=AdminTurnstile::configured();
+  $turnstile=$ready?'<div class="login-turnstile"><div class="cf-turnstile" data-sitekey="'.html(AdminTurnstile::siteKey()).'" data-action="'.AdminTurnstile::action().'" data-theme="light"></div></div>':'<p class="alert">Η ασφαλής σύνδεση δεν είναι προσωρινά διαθέσιμη.</p>';
+  $disabled=$ready?'':' disabled';
+  $form='<form class="login" method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="login"><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Κωδικός<input name="password" type="password" required autocomplete="current-password"></label>'.$turnstile.'<p class="login-hint">Μετά την επαλήθευση θα ζητηθεί υποχρεωτικά κωδικός Google Authenticator.</p><button'.$disabled.'>Συνέχεια</button></form>';
   AdminPageView::render('Σύνδεση διαχειριστή',$form,$error);
  }
  if($reg===null)$reg=Db::get('registry');
@@ -211,7 +271,7 @@ try {
   $content.='<form method="post" data-stepup="Αποθήκευση Nexi API Key"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="nexi-save"><label>Νέο Nexi API Key<input name="secret" type="password" autocomplete="off" required></label><input type="hidden" name="otp" value=""><button>Αποθήκευση / Αντικατάσταση</button></form>';
   $content.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><button name="action" value="nexi-test">Έλεγχος Σύνδεσης (χωρίς χρέωση)</button></form>';
  } elseif($p==='settings'){
-  $content.='<p>Σύνδεση με email και password. Το Google Authenticator ζητείται για αλλαγές κλειδιών και εξαγωγή CSV, πριν εφαρμοστεί η ενέργεια.</p><p>Live transactions: '.(Config::liveAllowed()?'Ενεργοποίηση από runtime — απαιτείται ανεξάρτητος έλεγχος.':'ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΕΣ').'</p>';
+  $content.='<p>Κάθε νέα σύνδεση απαιτεί email, password, Cloudflare Turnstile και 6ψήφιο Google Authenticator. Οι ευαίσθητες ενέργειες απαιτούν επιπλέον επιβεβαίωση MFA.</p><p>Live transactions: '.(Config::liveAllowed()?'Ενεργοποίηση από runtime — απαιτείται ανεξάρτητος έλεγχος.':'ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΕΣ').'</p>';
  } else throw new HttpError(404,'Not found');
  AdminPageView::render(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','payment'=>'Ανάλυση πληρωμής','subscription'=>'Ανάλυση Nexi MIT συνδρομής','settings'=>'Ρυθμίσεις'][$p]??'ILUMA',$content,$error,$notice);
 } catch(\Throwable $e){

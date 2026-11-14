@@ -14,7 +14,7 @@ final class SourceIntegrity
     public const ADMIN_FILE = 'src/AdminApplication.php';
     public const LEGACY_FILE = 'src/AdminController.php';
     public const LEGACY_GIT_BLOB = '1678e64a787dfa11ed3c090c6b5692c65e497c82';
-    public const ADMIN_GIT_BLOB = '70b993a0403e02e8103723200f7ffbb850e11033';
+    public const ADMIN_GIT_BLOB = 'ac40018487d2da033234f0436f9f4a85ef167ed0';
 
     public static function gitBlob(string $content): string
     {

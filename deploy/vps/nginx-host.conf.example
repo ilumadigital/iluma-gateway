@@ -1,0 +1,35 @@
+# ADD as a NEW site: /etc/nginx/sites-available/iluma-gateway
+# Do not replace iradios-stage or default. Install cert first via DNS-01.
+server {
+    listen 80;
+    server_name gateway.iluma.gr;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        try_files $uri =404;
+    }
+    location / { return 301 https://gateway.iluma.gr$request_uri; }
+}
+
+server {
+    listen 443 ssl;
+    server_name gateway.iluma.gr;
+    ssl_certificate /etc/letsencrypt/live/gateway.iluma.gr/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/gateway.iluma.gr/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    client_max_body_size 64k;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Do not install a broad access deny on /ilm-admin before confirming
+    # authorized administrator reachability. Prefer VPN/Zero Trust for admin.
+    location / {
+        proxy_pass http://127.0.0.1:5561;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 45s;
+        proxy_buffering off;
+    }
+}

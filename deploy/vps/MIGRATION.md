@@ -110,6 +110,10 @@ restore code ONLY from the reviewed Git checkout.
 
     sudo docker compose -f compose.vps.yml exec -T php php bin/manage.php doctor-http
     sudo bash deploy/vps/check-readiness.sh
+    sudo docker compose -f compose.vps.yml exec -T php php bin/vps-ledger-audit.php
+
+Compare the read-only financial/status aggregates (including pending outbox)
+against the SAME frozen source snapshot; differences STOP the cutover.
 
 Do not enable worker or real checkout yet. Safely test password login, TOTP,
 existing Nexi order read-only reconciliation and HMAC-authenticated staging

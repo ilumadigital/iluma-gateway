@@ -1,5 +1,10 @@
 (() => {
   "use strict";
+  // Set Turnstile size before its deferred Cloudflare script renders the widget.
+  // The compact challenge fits even the narrowest mobile login card.
+  document.querySelectorAll(".cf-turnstile").forEach(widget => {
+    widget.dataset.size = window.matchMedia("(max-width: 420px)").matches ? "compact" : "flexible";
+  });
   const dialog = document.getElementById("mfa-dialog");
   if (!dialog) return;
   const code = document.getElementById("mfa-code");

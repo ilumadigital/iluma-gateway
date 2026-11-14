@@ -82,3 +82,32 @@ jobs:
 
       - name: Run isolated security and payment state tests
         run: php tests/run.php
+
+
+  vps-package:
+    name: VPS Compose, image build and migration fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Check migration scripts and guardrails
+        run: |
+          python3 -m py_compile deploy/vps/*.py tests/vps_migration.py
+          python3 tests/vps_migration.py
+          bash -n deploy/vps/check-readiness.sh
+          docker compose -f compose.vps.yml config --quiet
+
+      - name: Build immutable PHP runtime
+        run: docker build -t iluma-gateway-php:ci -f deploy/vps/Dockerfile.php .
+
+      - name: Verify PHP runtime and pinned Admin source
+        run: |
+          docker run --rm iluma-gateway-php:ci php -r 'foreach(["pdo_mysql","sodium","curl","json"] as $ext){if(!extension_loaded($ext))exit(1);}'
+          docker run --rm iluma-gateway-php:ci php bin/check-source-integrity.php
+          docker run --rm iluma-gateway-php:ci php tests/run.php
+
+      - name: Build and lint internal Nginx
+        run: |
+          docker build -t iluma-gateway-web:ci -f deploy/vps/Dockerfile.web .
+          docker run --rm iluma-gateway-web:ci nginx -t

@@ -111,3 +111,42 @@ jobs:
         run: |
           docker build -t iluma-gateway-web:ci -f deploy/vps/Dockerfile.web .
           docker run --rm --add-host php:127.0.0.1 iluma-gateway-web:ci nginx -t
+
+
+      - name: Boot isolated Compose with synthetic nonproduction secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo install -d -m 0700 /etc/iluma-gateway
+          printf 'ci-not-a-real-password\n' | sudo tee /etc/iluma-gateway/mysql-root.password >/dev/null
+          sudo chmod 600 /etc/iluma-gateway/mysql-root.password
+          {
+            echo APP_ENV=development
+            echo GATEWAY_HOST=gateway.iluma.gr
+            echo PRODUCTION_ENABLED=0
+            echo MASTER_KEY_B64=S0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0s=
+          } | sudo tee /etc/iluma-gateway/iluma-gateway.env >/dev/null
+          sudo chown 33:33 /etc/iluma-gateway/iluma-gateway.env
+          sudo chmod 600 /etc/iluma-gateway/iluma-gateway.env
+          docker compose -f compose.vps.yml build php web
+          trap 'docker compose -f compose.vps.yml down' EXIT
+          docker compose -f compose.vps.yml up -d db php web
+          ready=0
+          for i in $(seq 1 45); do
+            status="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -H 'Host: gateway.iluma.gr' http://127.0.0.1:5561/ilm-admin/ || true)"
+            if [ "$status" = 200 ]; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then
+            docker compose -f compose.vps.yml ps
+            docker compose -f compose.vps.yml logs --tail=80 php web db
+            exit 1
+          fi
+          for path in /ilm-admin/admin.css /ilm-admin/admin.js; do
+            curl -fsS -o /dev/null -H 'Host: gateway.iluma.gr' "http://127.0.0.1:5561$path"
+          done
+          for path in / /src/Config.php /public/admin.php; do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Host: gateway.iluma.gr' "http://127.0.0.1:5561$path")"
+            test "$status" = 404
+          done
+          echo "PASS: Gateway Compose boots with synthetic secrets, serves Admin/assets and denies source"

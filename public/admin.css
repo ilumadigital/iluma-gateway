@@ -288,6 +288,8 @@ td button{min-height:34px;padding:7px 12px;font-size:11px}
 }
 @media(max-width:480px){
   .brand-tile{width:102px;height:45px;padding:9px 11px;border-radius:14px}
+  .brand-meta{display:none}
+  .is-login .brand-meta{display:flex}
   .brand-meta strong{font-size:16px}
   .brand-meta small{max-width:130px;line-height:1.4}
   .header-status{padding:8px 10px}

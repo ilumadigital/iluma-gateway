@@ -55,7 +55,7 @@ def main() -> None:
         "exec", "-T", "db", "sh", "-c",
         'MYSQL_PWD="$(cat /run/secrets/mysql_root_password)" exec mysql --protocol=socket -uroot'
     ]
-    result = subprocess.run(command, cwd=ROOT, input=("\n".join(script) + "\n").encode())
+    result = subprocess.run(command, cwd=ROOT, input=("\n".join(script) + "\n").encode(), capture_output=True)
     if result.returncode:
         raise RuntimeError("MySQL provisioning failed")
     print("PASS: three isolated databases and least-privilege app users provisioned")

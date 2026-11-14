@@ -176,7 +176,15 @@ Install worker timer DISABLED during preparation:
     sudo install -m 0644 deploy/vps/iluma-gateway-worker.timer /etc/systemd/system/
     sudo systemctl daemon-reload
 
-Only after cutover gates are met:
+Only after cutover gates are met AND the old worker has been stopped,
+create a root-owned explicit approval file (no secret content):
+
+    sudo install -o root -g root -m 0444 /dev/null /etc/iluma-gateway/worker.enabled
+
+The new worker container REFUSES to start unless this file exists. To
+emergency-stop future scheduled worker executions, disable the timer and
+remove the approval flag; do not interrupt reconciliation mid-transaction
+without reviewing existing payment outbox/provider status.
 
     sudo systemctl enable --now iluma-gateway-worker.timer
     sudo systemctl list-timers | grep iluma-gateway

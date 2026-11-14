@@ -186,6 +186,19 @@ The new source must not use shared write-enabled PHP mounts. A worker
 requires outbound TLS to both Nexi and stage.iradios.gr. It must not
 restart or rebuild the iRadios Compose project.
 
+## Post-import backup before cutover and subsequent code releases
+
+After verifying the restored VPS tenant databases and before any further
+Gateway changes, make an additional local SQL snapshot:
+
+    sudo python3 deploy/vps/backup-db.py
+
+This uses MySQL single-transaction read-only dumps, writes 0600 compressed
+archives under /root/gateway-migration/backups and prints checksums only.
+Encrypt/offload these sensitive SQL archives and separately protect the
+original preserved MASTER_KEY_B64. Local archives alone are not disaster
+recovery. Never copy SQL exports into Docker build context or GitHub.
+
 ## Rollback and updates
 
 Before any NEW writes, a DNS rollback may be considered only with new worker

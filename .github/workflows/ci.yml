@@ -143,6 +143,7 @@ jobs:
             sudo python3 deploy/vps/import-db.py "$database" "$archive" --apply --sha256 "$digest"
           done
           docker compose -f compose.vps.yml exec -T php php bin/vps-ledger-audit.php
+          sudo python3 deploy/vps/backup-db.py
           ready=0
           for i in $(seq 1 45); do
             status="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -H 'Host: gateway.iluma.gr' http://127.0.0.1:5561/ilm-admin/ || true)"

@@ -56,7 +56,7 @@ The repository tracks **source and safe examples only**. `.gitignore` excludes `
 ## Directory map
 
 - `public/index.php`: public API, hosted result page, Nexi notifications; returns neutral 404 otherwise.
-- `public/admin.php`: sole public admin entrypoint; loads `src/AdminController.php` (single private controller, no versioned copies). `public/admin.css` and `public/admin.js` provide the protected Greek UI.
+- `public/admin.php`: sole public admin entrypoint; loads `src/AdminApplication.php` (single live private controller, no versioned copies). `src/AdminController.php` is an unused compatibility shim, retained as an integrity canary. `public/admin.css` and `public/admin.js` provide the protected Greek UI.
 - `src/Security.php`: encrypt/decrypt, HMAC signatures, nonce, request validation, MFA.
 - `src/Payments.php`: payment intent + idempotency, conservative Nexi status reconciliation and audit timeline.
 - `src/NexiClient.php`: host-pinned XPay Greece HPP and API lookup.

@@ -9,7 +9,7 @@ $host=strtolower(explode(':',$_SERVER['HTTP_HOST']??'')[0]);
 if($host!==Config::get('GATEWAY_HOST')||!in_array(parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH),['/ilm-admin','/ilm-admin/'],true)){http_response_code(404);exit('Not found');}
 header('X-Content-Type-Options: nosniff');header('Referrer-Policy: no-referrer');header('X-Frame-Options: DENY');
 header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
-header("Content-Security-Policy: default-src 'none'; style-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+header("Content-Security-Policy: default-src 'none'; style-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; img-src 'self' https://iluma.gr; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
 header('Cache-Control: private, no-store, max-age=0');
 // Non-sensitive build marker verifies the actual web PHP entrypoint after Hostinger deploy.
 header('X-ILUMA-Admin-Entry: canonical');
@@ -43,14 +43,41 @@ function requireStepUp(\PDO $registry,string $code):void {
 final class AdminPageView {
  public static function render(string $title,string $body,string $error='',string $notice=''): never {
  $user=isset($_SESSION['admin_id']);$nav='';$environment=credentialEnv();$csrf=Security::csrf();
- if($user){foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','settings'=>'Ρυθμίσεις'] as $slug=>$label)$nav.='<a href="/ilm-admin/?p='.$slug.'">'.html($label).'</a>';
- $nav.='<form method="post" class="nav-action" data-stepup="Εξαγωγή CSV"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="export"><input type="hidden" name="otp" value=""><button type="submit">Εξαγωγή CSV</button></form>';
- $nav.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><button name="action" value="logout">Αποσύνδεση</button></form>';
- $nav.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="environment"><select name="environment"><option value="staging"'.($environment==='staging'?' selected':'').'>STAGING</option><option value="production"'.($environment==='production'?' selected':'').'>PRODUCTION</option></select><button>Επιλογή</button></form>';
+ if($user){
+  $selectedPage=(string)($_GET['p']??'dashboard');
+  if($selectedPage==='payment')$selectedPage='payments';
+  if($selectedPage==='subscription')$selectedPage='subscriptions';
+  $nav='<div class="side-heading">WORKSPACE</div>';
+  foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','settings'=>'Ρυθμίσεις'] as $slug=>$label){
+   $current=$selectedPage===$slug?' aria-current="page"':'';
+   $nav.='<a href="/ilm-admin/?p='.$slug.'"'.$current.'>'.html($label).'</a>';
+  }
+  $nav.='<div class="side-heading">ΕΝΕΡΓΕΙΕΣ</div>';
+  $nav.='<form method="post" class="nav-action" data-stepup="Εξαγωγή CSV"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="export"><input type="hidden" name="otp" value=""><button type="submit">Εξαγωγή CSV</button></form>';
+  $nav.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><button name="action" value="logout">Αποσύνδεση</button></form>';
+  $nav.='<form method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="environment"><select name="environment" aria-label="Περιβάλλον εργασίας"><option value="staging"'.($environment==='staging'?' selected':'').'>STAGING</option><option value="production"'.($environment==='production'?' selected':'').'>PRODUCTION</option></select><button>Επιλογή</button></form>';
+  $nav.='<div class="sidebar-footer"><strong><span class="footer-dot"></span>ILUMA Secure Console</strong>Ασφαλής διαχείριση πληρωμών και εφαρμογών.</div>';
  }
  $mfaDialog=$user?'<dialog id="mfa-dialog" class="mfa-dialog" aria-labelledby="mfa-title" aria-describedby="mfa-description"><div class="mfa-sheet"><div class="mfa-icon">✳</div><h2 id="mfa-title">Επιβεβαίωση ενέργειας</h2><p id="mfa-description">Άνοιξε το Google Authenticator και βάλε τον 6ψήφιο κωδικό. Η ενέργεια δεν εκτελείται πριν επιβεβαιώσεις.</p><p class="mfa-action-label" id="mfa-action-label"></p><label for="mfa-code">Κωδικός επιβεβαίωσης</label><input id="mfa-code" class="mfa-code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000"><p id="mfa-validation" class="mfa-validation" role="alert" hidden>Συμπλήρωσε έναν 6ψήφιο κωδικό.</p><div class="mfa-actions"><button type="button" class="button-secondary" id="mfa-cancel">Άκυρο</button><button type="button" id="mfa-confirm">Επιβεβαίωση</button></div></div></dialog>':'';
  $turnstileScript=(!$user && AdminLoginState::current((string)($_SERVER['REMOTE_ADDR']??''))===null && AdminTurnstile::configured())?'<script defer src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script>':'';
- echo '<!doctype html><html lang="el"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.html($title).' — ILUMA</title><link rel="stylesheet" href="/ilm-admin/admin.css"></head><body class="'.($user?'is-authenticated':'is-login').'"><header><strong class="brand-mark">ILUMA<span> / GATEWAY</span></strong><span>'.($user?html(strtoupper($environment)).' — '.($environment==='staging'?'TEST ENVIRONMENT':'LIVE DATA (CHARGES LOCKED BY DEFAULT)'):'Προστατευμένη πρόσβαση').'</span></header><div class="layout"><aside aria-label="Πλοήγηση διαχειριστικού">'.$nav.'</aside><main id="main-content"><h1>'.html($title).'</h1>'.($error?'<p class="alert" role="alert">'.html($error).'</p>':'').($notice?'<p class="notice" role="status">'.html($notice).'</p>':'').$body.'</main></div>'.$mfaDialog.'<script defer src="/ilm-admin/admin.js"></script>'.$turnstileScript.'</body></html>';exit;
+ $statusLabel=$user?html(strtoupper($environment)):'SECURE ACCESS';
+ $statusSubtitle=$user?($environment==='staging'?'SANDBOX WORKSPACE':'PRODUCTION VIEW'):'ADMINISTRATOR PORTAL';
+ $statusClass=$user?html($environment):'secure';
+ $eyebrow=$user?'ILUMA / FINANCE OPERATIONS':'ILUMA / PRIVATE WORKSPACE';
+ $headingDescription=$user?'Διαχειρίσου πληρωμές, συνδρομές και εφαρμογές από ένα ενιαίο περιβάλλον.':
+  (AdminLoginState::current((string)($_SERVER['REMOTE_ADDR']??''))!==null?'Ένα τελευταίο βήμα για ασφαλή πρόσβαση.':'Συνδέσου με τα στοιχεία σου για να συνεχίσεις με ασφάλεια.');
+ $headingChip=$user?html(strtoupper($environment)).' WORKSPACE':'PROTECTED WITH 2FA';
+ echo '<!doctype html><html lang="el"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f6f7f9"><title>'.html($title).' — ILUMA Gateway</title><link rel="stylesheet" href="/ilm-admin/admin.css"></head>'.
+  '<body class="'.($user?'is-authenticated':'is-login').'">'.
+  '<header class="topbar"><div class="header-brand"><div class="brand-tile"><img src="https://iluma.gr/press/ilumadigitalagencywh.png" alt="ILUMA Digital Agency" width="180" height="52" referrerpolicy="no-referrer"></div>'.
+  '<div class="brand-meta"><small>ILUMA DIGITAL AGENCY</small><strong>Gateway <em>Console</em></strong></div></div>'.
+  '<div class="header-status '.$statusClass.'"><span class="status-pulse" aria-hidden="true"></span><div><span>'.$statusSubtitle.'</span><b>'.$statusLabel.'</b></div></div></header>'.
+  '<div class="layout"><aside class="app-sidebar" aria-label="Πλοήγηση διαχειριστικού">'.$nav.'</aside>'.
+  '<main id="main-content"><div class="page-heading"><div><span class="page-eyebrow">'.$eyebrow.'</span><h1>'.html($title).'</h1><p class="page-description">'.$headingDescription.'</p></div>'.
+  '<span class="heading-chip">'.$headingChip.'</span></div>'.
+  ($error?'<p class="alert" role="alert">'.html($error).'</p>':'').
+  ($notice?'<p class="notice" role="status">'.html($notice).'</p>':'').$body.'</main></div>'.$mfaDialog.
+  '<script defer src="/ilm-admin/admin.js"></script>'.$turnstileScript.'</body></html>';exit;
  }
 }
 try {

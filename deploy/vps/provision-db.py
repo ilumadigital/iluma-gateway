@@ -57,7 +57,9 @@ def main() -> None:
     ]
     result = subprocess.run(command, cwd=ROOT, input=("\n".join(script) + "\n").encode(), capture_output=True)
     if result.returncode:
-        raise RuntimeError("MySQL provisioning failed")
+        match = re.search(rb"ERROR\\s+(\\d{3,5})", result.stderr)
+        error_code = match.group(1).decode("ascii") if match else "unknown"
+        raise RuntimeError(f"MySQL provisioning failed (exit={result.returncode}, mysql_code={error_code})")
     print("PASS: three isolated databases and least-privilege app users provisioned")
     print("Production application user: SELECT-only; production charges remain locked")
 

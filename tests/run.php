@@ -248,8 +248,15 @@ $adminCss=file_get_contents(dirname(__DIR__).'/public/admin.css');
 check($adminJs!==false && str_contains($adminJs,'requestSubmit'),'step-up popup submits after approval');
 check($adminCss!==false && str_contains($adminCss,'.mfa-dialog'),'MFA confirmation sheet styles present');
 check(str_contains($routing,'^ilm-admin/admin\.js$ public/admin.js'),'admin script routed correctly');
-check(str_contains($adminSource,"script-src 'self'"),'strict same-origin script CSP');
-check(str_contains($adminSource,'password_verify($pw,$u[\'passhash\']);'),'login verifies password without TOTP');
+check(str_contains($adminSource,"script-src 'self' https://challenges.cloudflare.com")
+ && str_contains($adminSource,'frame-src https://challenges.cloudflare.com'),
+ 'strict CSP permits Cloudflare Turnstile scripts and frames');
+check(str_contains($adminSource,'password_verify($pw,$u[\'passhash\']);')
+ && str_contains($adminSource,'AdminLoginState::begin(')
+ && str_contains($adminSource,'AdminLoginState::current(')
+ && str_contains($adminSource,'Security::otpVerify(Security::decrypt($u[\'totp_secret_box\']),$otp)')
+ && str_contains($adminSource,'AdminTurnstile::verify($token,$ip)'),
+ 'login verifies password, Turnstile and TOTP before session');
 check(str_contains($adminSource,'function requireStepUp('),'server-side MFA guard exists');
 check(substr_count($adminSource,'requireStepUp($reg,')>=4,'sensitive actions and CSV export have MFA guard');
 check(str_contains($adminSource,'MFA required for export'),'CSV downloads require verified POST');

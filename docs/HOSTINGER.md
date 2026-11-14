@@ -11,6 +11,21 @@ a replacement for a dedicated public/ document root on a hardened VPS.
 When the Git destination is:
     /home/ACCOUNT/domains/gateway.iluma.gr/public_html/
 
+Cloudflare Turnstile and per-login Google Authenticator are mandatory for new admin
+sessions. Add both keys to the **private** Hostinger environment file (never
+GitHub or public_html):
+
+    CLOUDFLARE_TURNSTILE_SITE_KEY=your_site_key
+    CLOUDFLARE_TURNSTILE_SECRET_KEY=your_secret_key
+
+Allow gateway.iluma.gr as the Turnstile hostname in Cloudflare. The site key
+appears in the login widget; the secret stays on the server for Siteverify.
+After a valid password and Turnstile challenge, the user enters a 6-digit TOTP.
+No authenticated session exists until TOTP succeeds. Login fails closed without
+both keys or when Siteverify fails. Configure keys BEFORE deploying the new
+login code to avoid being locked out. Never rotate MASTER_KEY_B64 when deploying:
+it is used to decrypt existing administrator TOTP secrets and credentials.
+
 Place the actual configuration here:
     /home/ACCOUNT/domains/gateway.iluma.gr/private/iluma-gateway.env
 
@@ -60,7 +75,8 @@ tables, the master key format, pinned Nexi endpoints and the production
 lock. It does not reveal secrets or call Nexi.
 
 The admin uses https://gateway.iluma.gr/ilm-admin (also /ilm-admin/) on the
-same Git deployment. Do not create a second hostname. The login requires email and password (Argon2id). A Google Authenticator-
+same Git deployment. Do not create a second hostname. The login requires email, password (Argon2id), Cloudflare Turnstile and a
+Google Authenticator 6-digit TOTP on every new session. A Google Authenticator-
 compatible TOTP confirmation is required for sensitive writes and CSV exports.
 The session uses CSRF protection, login lockout and an IP-based throttle. Optional
 VPN/Zero Trust access to /ilm-admin* is defense in depth and strongly
@@ -76,7 +92,7 @@ the SSH terminal (replace the email address):
     unset ADMIN_INITIAL_PASSWORD
 
 The CLI prints a one-time Base32 TOTP secret. Enter it manually into
-your authenticator and never copy it to public logs or Git. Log in at https://gateway.iluma.gr/ilm-admin with email and password; MFA is requested when confirming a sensitive action.
+your authenticator and never copy it to public logs or Git. Log in at https://gateway.iluma.gr/ilm-admin with email, password, Turnstile and then 6-digit MFA; sensitive actions still require fresh MFA.
 Do not disable the login rate limit, account lockout or TOTP verification.
 
 ## Sandbox onboarding
@@ -95,7 +111,7 @@ a PCI scope assessment remain prerequisites.
 ## Admin path checks
 
 - Visit https://gateway.iluma.gr/ilm-admin and verify the Email / Password / MFA login form loads.
-- Login needs email and password; sensitive actions then require Google Authenticator confirmation.
+- Login needs email, password and Turnstile, followed by a mandatory Google Authenticator code; sensitive actions also require MFA.
 - Set an optional VPN or Zero Trust gate around /ilm-admin* if available for extra protection.
 - The root path / and direct /public/admin.php must stay 404. No new DNS subdomain is required.
 
@@ -181,13 +197,14 @@ regenerate the master key randomly; investigate the historical key securely.
 ## SwiftUI-style admin and action-based MFA
 
 The responsive admin uses a light, native-app-inspired layout with notification
-cards and a confirmation sheet. Login requires email and password. A Google
-Authenticator modal appears only after the administrator clicks on saving or
+cards and a confirmation sheet. Login requires email, password, Cloudflare
+Turnstile and then Google Authenticator. A separate MFA confirmation modal
+appears when the administrator clicks on saving or
 replacing a Nexi API key, creating/disabling an application API key, or
 exporting CSV. Changes and exports are **performed only after** successful
 server-side TOTP verification. The step-up check applies even if a client
 bypasses JavaScript; five failed MFA attempts cause a 15-minute session lock.
-No TOTP is needed just to view the dashboard or check the Nexi connection.
+After authenticated login, no additional TOTP is needed just to view the dashboard or check the Nexi connection.
 The optional VPN/Zero Trust gate remains recommended as extra protection.
 
 Verify that both /ilm-admin/admin.css and /ilm-admin/admin.js return HTTP 200.

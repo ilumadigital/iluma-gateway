@@ -246,6 +246,9 @@ check(AdminContext::environment(['view_env'=>'unexpected'])==='staging','unknown
 $adminJs=file_get_contents(dirname(__DIR__).'/public/admin.js');
 $adminCss=file_get_contents(dirname(__DIR__).'/public/admin.css');
 check($adminJs!==false && str_contains($adminJs,'requestSubmit'),'step-up popup submits after approval');
+check(str_contains($adminJs,'matchMedia("(max-width: 420px)")')
+ && str_contains($adminSource,'data-size="flexible"'),
+ 'Turnstile login widget switches to compact size on narrow screens');
 check($adminCss!==false && str_contains($adminCss,'.mfa-dialog'),'MFA confirmation sheet styles present');
 
 check($adminCss!==false

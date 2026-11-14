@@ -93,10 +93,11 @@ jobs:
 
       - name: Check migration scripts and guardrails
         run: |
-          python3 -m py_compile deploy/vps/*.py tests/vps_migration.py
+          python3 -m py_compile deploy/vps/*.py tests/vps_migration.py tests/vps_topology.py
           python3 tests/vps_migration.py
           bash -n deploy/vps/check-readiness.sh
           docker compose -f compose.vps.yml config --quiet
+          python3 tests/vps_topology.py
 
       - name: Build immutable PHP runtime
         run: docker build -t iluma-gateway-php:ci -f deploy/vps/Dockerfile.php .

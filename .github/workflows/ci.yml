@@ -110,4 +110,4 @@ jobs:
       - name: Build and lint internal Nginx
         run: |
           docker build -t iluma-gateway-web:ci -f deploy/vps/Dockerfile.web .
-          docker run --rm iluma-gateway-web:ci nginx -t
+          docker run --rm --add-host php:127.0.0.1 iluma-gateway-web:ci nginx -t

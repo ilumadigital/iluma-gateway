@@ -93,3 +93,10 @@ td button{min-height:34px;padding:7px 10px;font-size:12px}
 @media(max-width:960px){.layout{grid-template-columns:200px minmax(0,1fr)}aside{padding:22px 10px}main{padding:28px 24px 60px}article.stat{min-width:160px}}
 @media(max-width:730px){header{height:auto;min-height:67px;padding:14px 18px;flex-wrap:wrap}.layout{display:flex;flex-direction:column}aside{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:13px 12px;border-right:0;border-bottom:1px solid var(--line);gap:5px}aside a,aside .nav-action button{white-space:nowrap;min-width:max-content;padding:11px 13px}aside form:not(.nav-action){margin:0;padding:0;border:0;min-width:max-content;display:flex;gap:8px;align-items:center}aside form:not(.nav-action) select{margin:0;min-height:38px;width:auto}aside form:not(.nav-action) button{width:auto}main{padding:26px 15px 50px}article.stat{min-width:calc(50% - 12px);margin-right:7px}td,th{padding:12px}table{display:block;overflow-x:auto}.is-login main{margin-top:24px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;scroll-behavior:auto!important}}
+
+/* Mandatory two-step Gateway login */
+.login-turnstile{display:flex;justify-content:center;min-height:68px;margin:15px 0}
+.login-otp .mfa-icon{margin:0 auto 20px}
+.login-otp .login-otp-code{text-align:center;font-size:25px;font-weight:750;letter-spacing:.28em;font-variant-numeric:tabular-nums}
+.is-login .login-back{background:transparent;border:0;box-shadow:none;text-align:center;margin:0;padding:0}
+.is-login .login-back button{width:auto;margin:0 auto}

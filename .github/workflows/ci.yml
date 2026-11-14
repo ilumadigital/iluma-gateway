@@ -39,8 +39,10 @@ jobs:
           set -euo pipefail
           grep -Fq 'RewriteRule ^ilm-admin/?$ public/admin.php [L,QSA]' .htaccess
           grep -Fq 'admin\.php' .htaccess
+          test -f src/AdminApplication.php
           test -f src/AdminController.php
-          grep -Fq "require dirname(__DIR__) . '/src/AdminController.php';" public/admin.php
+          grep -Fq "require __DIR__.'/AdminApplication.php';" src/AdminController.php
+          grep -Fq "require dirname(__DIR__) . '/src/AdminApplication.php';" public/admin.php
           if grep -Eq 'class AdminPageView|function requireStepUp' public/admin.php; then
             echo 'FAIL: logic was duplicated in public/admin.php'
             exit 1

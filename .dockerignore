@@ -26,3 +26,11 @@ imports/
 private/
 node_modules/
 .DS_Store
+
+# Never include ad-hoc SQL exports in a runtime Docker build.
+**/*.sql
+!database/registry.sql
+!database/tenant.sql
+!database/migrations/*.sql
+__pycache__/
+**/__pycache__/

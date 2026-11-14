@@ -1,0 +1,5 @@
+FROM nginxinc/nginx-unprivileged:stable-alpine
+
+COPY deploy/vps/nginx-internal.conf /etc/nginx/conf.d/default.conf
+COPY public/admin.css /usr/share/nginx/html/admin.css
+COPY public/admin.js /usr/share/nginx/html/admin.js

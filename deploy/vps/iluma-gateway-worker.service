@@ -1,0 +1,17 @@
+[Unit]
+Description=ILUMA Gateway staging payment outbox/reconciliation (one shot)
+Requires=docker.service
+After=docker.service
+ConditionPathExists=/etc/iluma-gateway/iluma-gateway.env
+ConditionPathExists=/etc/iluma-gateway/worker.enabled
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/iluma-gateway/app
+ExecStart=/usr/bin/flock -n /run/lock/iluma-gateway-staging-worker.lock /usr/bin/docker compose -f /srv/iluma-gateway/app/compose.vps.yml run --rm -T --no-deps worker
+TimeoutStartSec=180
+User=root
+Group=root
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=yes

@@ -1,0 +1,125 @@
+# Isolated deployment: does NOT join, restart or modify the iRadios Compose project.
+# Provision secrets in /etc/iluma-gateway BEFORE docker compose up.
+name: iluma_gateway
+
+x-php-runtime: &php-runtime
+  image: iluma-gateway-php:local
+  user: "33:33"
+  read_only: true
+  tmpfs:
+    - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  volumes:
+    - type: bind
+      source: /etc/iluma-gateway/iluma-gateway.env
+      target: /srv/iluma-gateway/private/iluma-gateway.env
+      read_only: true
+      bind:
+        create_host_path: false
+  networks: [gateway_internal]
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+    secrets: [mysql_root_password]
+    volumes:
+      - gateway_mysql_data:/var/lib/mysql
+    command:
+      - --skip-name-resolve
+      - --innodb-buffer-pool-size=256M
+      - --max-connections=80
+      - --default-time-zone=+00:00
+    networks: [gateway_internal]
+    mem_limit: 900m
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$(cat /run/secrets/mysql_root_password)\" mysql --protocol=socket -uroot -N -B -e \"SELECT 1\" 2>/dev/null | grep -qx 1 && mysqladmin ping --silent --protocol=TCP -h127.0.0.1 >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 8s
+      retries: 20
+      start_period: 75s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  php:
+    <<: *php-runtime
+    build:
+      context: .
+      dockerfile: deploy/vps/Dockerfile.php
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+    mem_limit: 384m
+    # PHP-FPM is only accessible inside this Compose project's network.
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/vps/Dockerfile.web
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=32m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      php: {condition: service_started}
+    ports:
+      - "127.0.0.1:5561:8080"
+    networks: [gateway_internal]
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null --header='Host: gateway.iluma.gr' http://127.0.0.1:8080/ilm-admin/"]
+      interval: 30s
+      timeout: 7s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  # NEVER start this with 'up -d'. Enable the dedicated systemd timer only
+  # AFTER final DB sync, old cron deactivation and HTTPS cutover checks.
+  worker:
+    <<: *php-runtime
+    profiles: ["worker"]
+    # Additional explicit operator cutover gate, even for manual docker run.
+    volumes:
+      - type: bind
+        source: /etc/iluma-gateway/iluma-gateway.env
+        target: /srv/iluma-gateway/private/iluma-gateway.env
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /etc/iluma-gateway/worker.enabled
+        target: /etc/iluma-gateway/worker.enabled
+        read_only: true
+        bind:
+          create_host_path: false
+    command: ["sh", "-ec", "test -f /etc/iluma-gateway/worker.enabled || { echo 'STOP: cutover approval flag missing' >&2; exit 78; }; exec php bin/work.php staging"]
+    working_dir: /srv/iluma-gateway/app
+    restart: "no"
+    mem_limit: 256m
+
+secrets:
+  mysql_root_password:
+    file: /etc/iluma-gateway/mysql-root.password
+
+volumes:
+  gateway_mysql_data:
+    name: iluma_gateway_mysql_data
+
+networks:
+  gateway_internal:
+    name: iluma_gateway_internal
+    driver: bridge

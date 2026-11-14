@@ -82,3 +82,84 @@ jobs:
 
       - name: Run isolated security and payment state tests
         run: php tests/run.php
+
+
+  vps-package:
+    name: VPS Compose, image build and migration fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Check migration scripts and guardrails
+        run: |
+          python3 -m py_compile deploy/vps/*.py tests/vps_migration.py tests/vps_topology.py
+          python3 tests/vps_migration.py
+          bash -n deploy/vps/check-readiness.sh
+          docker compose -f compose.vps.yml config --quiet
+          python3 tests/vps_topology.py
+
+      - name: Build immutable PHP runtime
+        run: docker build -t iluma-gateway-php:ci -f deploy/vps/Dockerfile.php .
+
+      - name: Verify PHP runtime and pinned Admin source
+        run: |
+          docker run --rm iluma-gateway-php:ci php -r 'foreach(["pdo_mysql","sodium","curl","json"] as $ext){if(!extension_loaded($ext))exit(1);}'
+          docker run --rm iluma-gateway-php:ci php bin/check-source-integrity.php
+          docker run --rm iluma-gateway-php:ci php tests/run.php
+
+      - name: Build and lint internal Nginx
+        run: |
+          docker build -t iluma-gateway-web:ci -f deploy/vps/Dockerfile.web .
+          docker run --rm --add-host php:127.0.0.1 iluma-gateway-web:ci nginx -t
+
+
+      - name: Boot isolated Compose with synthetic nonproduction secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo install -d -m 0700 /root/gateway-migration
+          {
+            echo MASTER_KEY_B64=S0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0s=
+            echo NEXI_STAGING_BASE=https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp
+            echo NEXI_PRODUCTION_BASE=https://xpay.nexigroup.com/api/phoenix-0.0/psp
+            echo IRADIOS_STAGING_WEBHOOK=https://stage.iradios.gr/api/gateway/webhook
+            echo IRADIOS_PRODUCTION_WEBHOOK=https://play.iradios.gr/api/gateway/webhook
+          } | sudo tee /root/gateway-migration/old-gateway.env >/dev/null
+          sudo chmod 600 /root/gateway-migration/old-gateway.env
+          sudo python3 deploy/vps/prepare-secrets.py /root/gateway-migration/old-gateway.env
+          docker compose -f compose.vps.yml build php web
+          trap 'docker compose -f compose.vps.yml down' EXIT
+          docker compose -f compose.vps.yml up -d db php web
+          sudo python3 deploy/vps/provision-db.py
+          sudo cp database/registry.sql /root/gateway-migration/registry.sql
+          sudo cp database/tenant.sql /root/gateway-migration/staging.sql
+          sudo cp database/tenant.sql /root/gateway-migration/production.sql
+          for entry in "iluma_registry registry" "iluma_staging staging" "iluma_production production"; do
+            read -r database name <<< "$entry"
+            archive="/root/gateway-migration/$name.sql"
+            sudo python3 deploy/vps/import-db.py "$database" "$archive"
+            digest="$(sudo sha256sum "$archive" | awk '{print $1}')"
+            sudo python3 deploy/vps/import-db.py "$database" "$archive" --apply --sha256 "$digest"
+          done
+          docker compose -f compose.vps.yml exec -T php php bin/vps-ledger-audit.php
+          sudo python3 deploy/vps/backup-db.py
+          ready=0
+          for i in $(seq 1 45); do
+            status="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -H 'Host: gateway.iluma.gr' http://127.0.0.1:5561/ilm-admin/ || true)"
+            if [ "$status" = 200 ]; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then
+            docker compose -f compose.vps.yml ps
+            docker compose -f compose.vps.yml logs --tail=80 php web db
+            exit 1
+          fi
+          for path in /ilm-admin/admin.css /ilm-admin/admin.js; do
+            curl -fsS -o /dev/null -H 'Host: gateway.iluma.gr' "http://127.0.0.1:5561$path"
+          done
+          for path in / /src/Config.php /public/admin.php; do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Host: gateway.iluma.gr' "http://127.0.0.1:5561$path")"
+            test "$status" = 404
+          done
+          echo "PASS: Gateway Compose boots with synthetic secrets, serves Admin/assets and denies source"

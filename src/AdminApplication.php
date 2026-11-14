@@ -185,7 +185,7 @@ try {
    AdminPageView::render('Επιβεβαίωση Google Authenticator',$form,$error);
   }
   $ready=AdminTurnstile::configured();
-  $turnstile=$ready?'<div class="login-turnstile"><div class="cf-turnstile" data-sitekey="'.html(AdminTurnstile::siteKey()).'" data-action="'.AdminTurnstile::action().'" data-theme="light"></div></div>':'<p class="alert">Η ασφαλής σύνδεση δεν είναι προσωρινά διαθέσιμη.</p>';
+  $turnstile=$ready?'<div class="login-turnstile"><div class="cf-turnstile" data-sitekey="'.html(AdminTurnstile::siteKey()).'" data-action="'.AdminTurnstile::action().'" data-theme="light" data-size="flexible"></div></div>':'<p class="alert">Η ασφαλής σύνδεση δεν είναι προσωρινά διαθέσιμη.</p>';
   $disabled=$ready?'':' disabled';
   $form='<form class="login" method="post"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="login"><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Κωδικός<input name="password" type="password" required autocomplete="current-password"></label>'.$turnstile.'<p class="login-hint">Μετά την επαλήθευση θα ζητηθεί υποχρεωτικά κωδικός Google Authenticator.</p><button'.$disabled.'>Συνέχεια</button></form>';
   AdminPageView::render('Σύνδεση διαχειριστή',$form,$error);

@@ -41,7 +41,7 @@ services:
     networks: [gateway_internal]
     mem_limit: 900m
     healthcheck:
-      test: ["CMD-SHELL", "MYSQL_PWD=\"$$(cat /run/secrets/mysql_root_password)\" mysqladmin ping --silent --protocol=socket -uroot"]
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$(cat /run/secrets/mysql_root_password)\" mysql --protocol=TCP -h127.0.0.1 -uroot -N -B -e \"SELECT 1\" 2>/dev/null | grep -qx 1"]
       interval: 15s
       timeout: 8s
       retries: 20

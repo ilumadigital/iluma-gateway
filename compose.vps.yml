@@ -92,7 +92,21 @@ services:
   worker:
     <<: *php-runtime
     profiles: ["worker"]
-    command: ["php", "bin/work.php", "staging"]
+    # Additional explicit operator cutover gate, even for manual docker run.
+    volumes:
+      - type: bind
+        source: /etc/iluma-gateway/iluma-gateway.env
+        target: /srv/iluma-gateway/private/iluma-gateway.env
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /etc/iluma-gateway/worker.enabled
+        target: /etc/iluma-gateway/worker.enabled
+        read_only: true
+        bind:
+          create_host_path: false
+    command: ["sh", "-ec", "test -f /etc/iluma-gateway/worker.enabled || { echo 'STOP: cutover approval flag missing' >&2; exit 78; }; exec php bin/work.php staging"]
     working_dir: /srv/iluma-gateway/app
     restart: "no"
     mem_limit: 256m

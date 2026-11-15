@@ -69,11 +69,11 @@ final class AdminPageView {
  $headingChip=$user?html(strtoupper($environment)).' WORKSPACE':'PROTECTED WITH 2FA';
  echo '<!doctype html><html lang="el"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f6f7f9"><title>'.html($title).' — ILUMA Gateway</title><link rel="stylesheet" href="/ilm-admin/admin.css"></head>'.
   '<body class="'.($user?'is-authenticated':'is-login').'">'.
-  '<header class="topbar"><div class="header-brand"><div class="brand-tile"><img src="https://iluma.gr/press/ilumadigitalagencywh.png" alt="ILUMA Digital Agency" width="180" height="52" referrerpolicy="no-referrer"></div>'.
+  '<header class="topbar">'.($user?'<button class="mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-controls="app-sidebar" aria-expanded="false" aria-label="Άνοιγμα μενού"><span></span><span></span><span></span></button>':'').'<div class="header-brand"><div class="brand-tile"><img src="'.($user?'https://iluma.gr/assets/images/ilumadigitalagencyblk.png':'https://iluma.gr/press/ilumadigitalagencywh.png').'" alt="ILUMA Digital Agency" width="180" height="52" referrerpolicy="no-referrer"></div>'.
   '<div class="brand-meta"><small>ILUMA DIGITAL AGENCY</small><strong>Gateway <em>Console</em></strong></div></div>'.
   ($user?'':'<div class="login-brand-copy"><span class="login-brand-kicker">ILUMA / SECURE PLATFORM</span><h2>One gateway.<br><span>Full control.</span></h2><p>Πληρωμές, συνδρομές και εφαρμογές σε ένα ασφαλές περιβάλλον.</p></div><div class="login-brand-foot"><span class="login-brand-foot-dot" aria-hidden="true"></span> ENCRYPTED ADMIN ACCESS <span class="login-brand-foot-sep" aria-hidden="true"></span> ILUMA DIGITAL AGENCY</div>').
   '<div class="header-status '.$statusClass.'"><span class="status-pulse" aria-hidden="true"></span><div><span>'.$statusSubtitle.'</span><b>'.$statusLabel.'</b></div></div></header>'.
-  '<div class="layout"><aside class="app-sidebar" aria-label="Πλοήγηση διαχειριστικού">'.$nav.'</aside>'.
+  '<div class="layout"><aside class="app-sidebar" id="app-sidebar" aria-label="Πλοήγηση διαχειριστικού">'.$nav.'</aside><button class="sidebar-backdrop" id="sidebar-backdrop" type="button" aria-label="Κλείσιμο μενού" hidden></button>'.
   '<main id="main-content"><div class="page-heading"><div><span class="page-eyebrow">'.$eyebrow.'</span><h1>'.html($title).'</h1><p class="page-description">'.$headingDescription.'</p></div>'.
   '<span class="heading-chip">'.$headingChip.'</span></div>'.
   ($error?'<p class="alert" role="alert">'.html($error).'</p>':'').
@@ -215,17 +215,20 @@ try {
    COALESCE(SUM(CASE WHEN status='paid' AND confirmed_at>=? AND confirmed_at<? THEN amount_cents ELSE 0 END),0) AS amount_month,
    COUNT(CASE WHEN status='failed' THEN 1 END) AS failed, COUNT(CASE WHEN status='canceled' THEN 1 END) AS canceled FROM payments",
    [$todayMin,$tomorrow,$todayMin,$tomorrow,$monthMin,$nextMonth,$monthMin,$nextMonth]);
+  $content.='<section class="dashboard-overview" aria-label="Οικονομικά στοιχεία"><div class="dashboard-section-head"><div><span class="dashboard-label">FINANCE / '.html(strtoupper($env)).'</span><h2>Κίνηση πληρωμών</h2><p>Πραγματικές συναλλαγές στο επιλεγμένο περιβάλλον</p></div><a class="dashboard-link" href="/ilm-admin/?p=payments">Όλες οι πληρωμές <span aria-hidden="true">↗</span></a></div><div class="dashboard-kpis">';
   foreach(['Πληρωμές σήμερα'=>$stats['paid_today'],'Εισπράξεις σήμερα'=>euro((int)$stats['amount_today']),'Πληρωμές μήνα'=>$stats['paid_month'],'Εισπράξεις μήνα'=>euro((int)$stats['amount_month']),'Αποτυχημένες'=>$stats['failed'],'Ακυρωμένες'=>$stats['canceled']] as $label=>$value)$content.='<article class="stat"><small>'.html($label).'</small><strong>'.html((string)$value).'</strong></article>';
-  $content.='<div class="clear"></div><p>Τα ποσά προέρχονται αποκλειστικά από το ενεργό περιβάλλον. Οι επιστροφές εμφανίζονται ξεχωριστά.</p>';
+  $content.='</div><p class="dashboard-note">Οι εισπράξεις αφορούν επιβεβαιωμένες πληρωμές. Οι επιστροφές εμφανίζονται χωριστά. Τα αποτυχημένα και ακυρωμένα αφορούν ολόκληρο το επιλεγμένο περιβάλλον.</p></section>';
   $sub=Db::one($db,"SELECT COUNT(CASE WHEN state='active' THEN 1 END) active,COUNT(CASE WHEN state='past_due' THEN 1 END) past_due,COUNT(CASE WHEN next_billing_at>=UTC_TIMESTAMP() AND next_billing_at<DATE_ADD(UTC_TIMESTAMP(),INTERVAL 7 DAY) THEN 1 END) upcoming FROM subscriptions");
-  $content.='<p>Παλαιότερες συνδρομές: '.(int)$sub['active'].' ενεργές · '.(int)$sub['past_due'].' ληξιπρόθεσμες.</p>';
+  $content.='<section class="dashboard-subscriptions"><div class="dashboard-section-head"><div><span class="dashboard-label">SUBSCRIPTIONS</span><h2>Παλαιότερες συνδρομές</h2></div><a class="dashboard-link" href="/ilm-admin/?p=subscriptions">Συνδρομές <span aria-hidden="true">↗</span></a></div><div class="dashboard-mini-grid">';
+  foreach(['Ενεργές'=>(int)$sub['active'],'Ληξιπρόθεσμες'=>(int)$sub['past_due'],'Επόμενη χρέωση εντός 7 ημερών'=>(int)$sub['upcoming']] as $label=>$value)$content.='<div class="dashboard-mini-stat"><span>'.html($label).'</span><strong>'.(int)$value.'</strong></div>';
+  $content.='</div></section>';
   if($env==='staging')$content.=\Iluma\Gateway\RecurringAdmin::summary($db);
   $byProduct=Db::all($db,"SELECT pr.title,COUNT(*) paid_count,COALESCE(SUM(p.amount_cents),0) gross FROM payments p JOIN products pr ON pr.id=p.product_id WHERE p.status='paid' GROUP BY pr.id ORDER BY gross DESC LIMIT 15");
-  $content.='<h2>Εισπράξεις ανά υπηρεσία</h2><table><tr><th>Προϊόν</th><th>Επιτυχείς πληρωμές</th><th>Ακαθάριστο ποσό</th></tr>';
+  $content.='<section class="dashboard-products"><div class="dashboard-section-head"><div><span class="dashboard-label">SERVICES</span><h2>Εισπράξεις ανά υπηρεσία</h2></div></div><div class="dashboard-table-scroll"><table><tr><th>Προϊόν</th><th>Επιτυχείς πληρωμές</th><th>Ακαθάριστο ποσό</th></tr>';
   foreach($byProduct as $r)$content.='<tr><td>'.html($r['title']).'</td><td>'.(int)$r['paid_count'].'</td><td>'.euro((int)$r['gross']).'</td></tr>';
-  $content.='</table>';
+  $content.='</table></div></section>';
 
-  $refund=Db::one($db,"SELECT COALESCE(SUM(amount_cents),0) AS amount FROM refunds WHERE status='confirmed'");$content.='<p>Επιβεβαιωμένες επιστροφές: '.euro((int)$refund['amount']).'</p>';
+  $refund=Db::one($db,"SELECT COALESCE(SUM(amount_cents),0) AS amount FROM refunds WHERE status='confirmed'");$content.='<section class="dashboard-refunds"><div><span class="dashboard-label">REFUNDS</span><h2>Επιβεβαιωμένες επιστροφές</h2></div><strong>'.euro((int)$refund['amount']).'</strong></section>';
  } elseif(in_array($p,['payments','logs'],true)){
   $query=trim((string)($_GET['q']??''));$where=$query!==''?' WHERE p.id=? OR p.order_id=? OR c.email=?':'';$args=$query!==''?[$query,$query,$query]:[];
   $rows=Db::all($db,'SELECT p.id,p.order_id,p.created_at,p.status,p.amount_cents,c.email,pr.title FROM payments p JOIN customers c ON c.id=p.customer_id JOIN products pr ON pr.id=p.product_id'.$where.' ORDER BY p.created_at DESC LIMIT 100',$args);

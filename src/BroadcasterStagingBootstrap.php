@@ -39,14 +39,22 @@ final class BroadcasterStagingBootstrap {
    WHERE application_id=? AND sku IN ($placeholders)",array_merge([$app],array_keys($expected)));
   $found=[];
   foreach($rows as $row)$found[(string)$row['sku']]=$row;
-  foreach($found as $sku=>$row) {
-   if((int)$row['amount_cents']!==$expected[$sku]||$row['currency']!=='EUR'
-      ||(int)$row['enabled']!==1)
+  $changes=[];
+  foreach($expected as $sku=>$price) {
+   $row=$found[$sku]??null;
+   if(!$row){$changes[$sku]=['from'=>null,'to'=>$price];continue;}
+   if($row['currency']!=='EUR'||(int)$row['enabled']!==1)
     throw new HttpError(503,'BROADCASTER_STAGING_CATALOG_MISMATCH');
+   $old=(int)$row['amount_cents'];
+   if($old===$price)continue;
+   // Only the four explicitly approved 2026-11-15 broadcaster transitions.
+   $legacy=BroadcasterMandates::LEGACY_PRICE[$sku]??null;
+   if($legacy===null||$old!==$legacy)
+    throw new HttpError(503,'BROADCASTER_STAGING_CATALOG_MISMATCH');
+   $changes[$sku]=['from'=>$old,'to'=>$price];
   }
-  return array_diff_key($expected,$found);
+  return $changes;
  }
-
  private static function ready(PDO $db,int $app):bool {
   $tables=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
    WHERE table_schema=DATABASE() AND table_name IN
@@ -85,14 +93,24 @@ final class BroadcasterStagingBootstrap {
     throw new HttpError(503,'BROADCASTER_STAGING_SETUP_BUSY');
    try {
     if(!self::ready($db,$app)) {
-     // Existing wrong prices are never silently changed.
+     // Approved staging-only migration, guarded by old price and tenant.
+     // Existing mandates and paid transactions retain their signed amounts.
      $missing=self::catalog($db,$app);
      self::installTables($db);
-     foreach($missing as $sku=>$amount) {
-      Db::exec($db,"INSERT INTO products
-       (application_id,sku,title,amount_cents,currency,enabled)
-       VALUES(?,?,?,?,'EUR',1) ON DUPLICATE KEY UPDATE id=id",
-       [$app,$sku,$sku,$amount]);
+     foreach($missing as $sku=>$change) {
+      if($change['from']!==null) {
+       $updated=Db::exec($db,"UPDATE products SET amount_cents=?
+        WHERE application_id=? AND sku=? AND amount_cents=?
+         AND currency='EUR' AND enabled=1",
+         [$change['to'],$app,$sku,$change['from']]);
+       if($updated!==1)
+        throw new HttpError(503,'BROADCASTER_STAGING_CATALOG_MISMATCH');
+      }else{
+       Db::exec($db,"INSERT INTO products
+        (application_id,sku,title,amount_cents,currency,enabled)
+        VALUES(?,?,?,?,'EUR',1) ON DUPLICATE KEY UPDATE id=id",
+        [$app,$sku,$sku,$change['to']]);
+      }
      }
     }
     if(!self::ready($db,$app))

@@ -71,6 +71,7 @@ final class AdminPageView {
   '<body class="'.($user?'is-authenticated':'is-login').'">'.
   '<header class="topbar"><div class="header-brand"><div class="brand-tile"><img src="https://iluma.gr/press/ilumadigitalagencywh.png" alt="ILUMA Digital Agency" width="180" height="52" referrerpolicy="no-referrer"></div>'.
   '<div class="brand-meta"><small>ILUMA DIGITAL AGENCY</small><strong>Gateway <em>Console</em></strong></div></div>'.
+  ($user?'':'<div class="login-brand-copy"><span class="login-brand-kicker">ILUMA / SECURE PLATFORM</span><h2>One gateway.<br><span>Full control.</span></h2><p>Πληρωμές, συνδρομές και εφαρμογές σε ένα ασφαλές περιβάλλον.</p></div><div class="login-brand-foot"><span class="login-brand-foot-dot" aria-hidden="true"></span> ENCRYPTED ADMIN ACCESS <span class="login-brand-foot-sep" aria-hidden="true"></span> ILUMA DIGITAL AGENCY</div>').
   '<div class="header-status '.$statusClass.'"><span class="status-pulse" aria-hidden="true"></span><div><span>'.$statusSubtitle.'</span><b>'.$statusLabel.'</b></div></div></header>'.
   '<div class="layout"><aside class="app-sidebar" aria-label="Πλοήγηση διαχειριστικού">'.$nav.'</aside>'.
   '<main id="main-content"><div class="page-heading"><div><span class="page-eyebrow">'.$eyebrow.'</span><h1>'.html($title).'</h1><p class="page-description">'.$headingDescription.'</p></div>'.

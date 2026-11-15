@@ -305,3 +305,163 @@ td button{min-height:34px;padding:7px 12px;font-size:11px}
   .mfa-sheet{padding:24px}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+
+/* Login-only viewport shell. Keep authenticated pages and the 2FA flow untouched. */
+body.is-login{
+  display:grid;grid-template-columns:minmax(0,48%) minmax(0,52%);
+  height:100vh;height:100dvh;min-height:0;overflow:hidden;background:#fff
+}
+.is-login header.topbar{
+  grid-column:1;grid-row:1;position:relative;isolation:isolate;overflow:hidden;
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;
+  width:100%;height:100%;min-height:0;gap:30px;
+  padding:clamp(30px,4.6vw,76px);border:0;
+  background:
+    radial-gradient(circle at 92% 67%,rgba(80,100,165,.20) 0,transparent 42%),
+    radial-gradient(circle at 9% 5%,rgba(85,105,165,.10) 0,transparent 38%),
+    #0c0e13;color:#fff
+}
+.is-login header.topbar::before{
+  content:"";position:absolute;z-index:0;pointer-events:none;
+  width:clamp(330px,43vw,710px);aspect-ratio:1;border-radius:50%;
+  right:-42%;bottom:-37%;border:1px solid rgba(210,222,255,.11);
+  box-shadow:0 0 0 62px rgba(180,195,250,.035),0 0 0 128px rgba(180,195,250,.025)
+}
+.is-login header.topbar>.header-brand,
+.is-login .login-brand-copy,
+.is-login .login-brand-foot{position:relative;z-index:1}
+.is-login header.topbar>.header-brand{
+  display:flex;flex-direction:column;align-items:flex-start;
+  flex:0 0 auto;gap:17px;text-align:left
+}
+.is-login .brand-tile{
+  display:flex;width:208px;height:84px;padding:18px 22px;
+  border-radius:20px;background:#050609;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.09),0 18px 40px rgba(0,0,0,.25)
+}
+.is-login .brand-meta{display:flex;align-items:flex-start;gap:6px}
+.is-login .brand-meta small{color:#939cad;font-size:10px;letter-spacing:.19em}
+.is-login .brand-meta strong{color:#f5f6fa;font-size:19px}
+.is-login .brand-meta em{color:#aab3c4}
+.is-login .header-status{display:none}
+.is-login .login-brand-copy{max-width:560px;margin:auto 0}
+.is-login .login-brand-kicker{
+  display:block;margin-bottom:19px;color:#aebcf5;
+  font-size:10px;font-weight:780;letter-spacing:.21em
+}
+.is-login .login-brand-copy h2{
+  margin:0;color:#fff;font-size:clamp(41px,4.8vw,76px);
+  line-height:1.075;font-weight:790;letter-spacing:-.073em
+}
+.is-login .login-brand-copy h2 span{color:#b7c5ff}
+.is-login .login-brand-copy p{
+  max-width:410px;margin:24px 0 0;color:#aab1bf;
+  font-size:clamp(13px,1.15vw,16px);line-height:1.8
+}
+.is-login .login-brand-foot{
+  display:flex;align-items:center;flex-wrap:wrap;gap:11px;
+  color:#a4abbb;font-size:9px;font-weight:760;letter-spacing:.13em
+}
+.is-login .login-brand-foot-dot{width:8px;height:8px;border-radius:50%;background:#75e1b2;box-shadow:0 0 0 5px rgba(117,225,178,.1)}
+.is-login .login-brand-foot-sep{width:1px;height:13px;background:rgba(255,255,255,.22)}
+.is-login .layout{
+  grid-column:2;grid-row:1;display:flex;align-items:center;justify-content:center;
+  width:100%;height:100%;min-height:0;overflow-x:hidden;overflow-y:auto;
+  overscroll-behavior:contain;background:#fff
+}
+.is-login aside.app-sidebar{display:none}
+.is-login main{
+  flex:0 1 560px;width:100%;min-width:0;max-width:560px;
+  margin:auto;padding:28px clamp(24px,3.6vw,54px)
+}
+.is-login .page-heading{
+  display:block;margin:0 0 24px;text-align:left
+}
+.is-login .page-eyebrow{margin-bottom:13px;color:#858b98}
+.is-login h1{font-size:clamp(29px,3vw,38px);line-height:1.13}
+.is-login .page-description{margin-top:10px;font-size:13px;color:#767d8c}
+.is-login .heading-chip{display:none}
+.is-login .login{
+  margin:0;padding:29px 31px 31px;background:#fff;border:1px solid #e7eaf0;
+  border-radius:23px;box-shadow:0 16px 55px rgba(21,26,49,.055),0 2px 7px rgba(21,26,49,.025)
+}
+.is-login .login:not(.login-otp):before,
+.is-login .login.login-otp:before{margin-bottom:22px;color:#939aaa;letter-spacing:.13em}
+.is-login .login label{
+  display:block;margin:9px 0 18px;font-size:12px;
+  font-weight:740;color:#424a59
+}
+.is-login .login input:not([type="hidden"]){
+  display:block;width:100%;max-width:none;height:52px;min-height:52px;
+  margin:8px 0 0;padding:12px 15px;background:#f8f9fc;
+  border:1px solid #e5e9f1;border-radius:13px
+}
+.is-login .login input:not([type="hidden"]):focus{
+  background:#fff;border-color:#7190fa;box-shadow:0 0 0 4px rgba(52,87,243,.11)
+}
+.is-login .login>button{
+  display:block;width:100%;min-height:53px;margin-top:12px;
+  border-radius:13px;background:#12151c;color:#fff;font-size:14px
+}
+.is-login .login>button:not(:disabled):hover{background:#272d39;box-shadow:0 9px 22px rgba(10,15,27,.14)}
+.is-login .login-turnstile{max-width:100%;min-height:65px;margin:10px 0 12px}
+.is-login .login-turnstile>*{max-width:100%}
+.is-login .login-hint{
+  margin:14px 0 13px;padding:12px 14px;background:#f6f7fc;
+  color:#626b80;font-size:11px;line-height:1.65
+}
+.is-login .login-otp .mfa-icon{margin:0 auto 18px}
+.is-login .login.login-otp .login-otp-code{
+  font-size:25px;line-height:1.2;letter-spacing:.33em
+}
+.is-login .login-back{margin:12px 0 0;padding:0;border:0;box-shadow:none}
+.is-login .login-back button{margin:0;padding:9px 12px}
+.is-login main:after{
+  content:"SECURE ACCESS  •  TWO-FACTOR AUTHENTICATION";
+  display:block;margin-top:22px;color:#9fa5b1;
+  font-size:10px;letter-spacing:.12em;text-align:center
+}
+@media (min-width:768px) and (max-width:1080px){
+  body.is-login{grid-template-columns:minmax(0,43%) minmax(0,57%)}
+  .is-login header.topbar{padding:28px}
+  .is-login .login-brand-copy h2{font-size:clamp(37px,4.6vw,52px)}
+  .is-login main{padding:22px 17px;flex-basis:510px}
+  .is-login .login{padding:24px 20px}
+}
+@media (max-width:767px){
+  body.is-login{
+    display:block;width:100%;height:100vh;height:100dvh;
+    min-height:0;overflow:hidden;background:#fff
+  }
+  .is-login header.topbar{display:none}
+  .is-login .layout{
+    display:flex;flex-direction:column;align-items:center;
+    width:100%;height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;background:#fff
+  }
+  .is-login main{
+    flex:0 0 auto;width:100%;max-width:470px;
+    margin:auto;padding:26px 20px
+  }
+  .is-login .page-heading{margin-bottom:19px;text-align:left}
+  .is-login .page-eyebrow{display:none}
+  .is-login h1{font-size:30px}
+  .is-login .page-description{font-size:12px}
+  .is-login .login{padding:24px 21px 25px;border-radius:21px;box-shadow:0 10px 32px rgba(21,26,49,.045)}
+  .is-login .login:not(.login-otp):before,
+  .is-login .login.login-otp:before{margin-bottom:19px}
+  .is-login .login label{margin-bottom:15px}
+  .is-login .login input:not([type="hidden"]){height:51px;min-height:51px}
+  .is-login main:after{display:none}
+}
+@media (max-width:380px){
+  .is-login main{padding:18px 14px}
+  .is-login .login{padding:21px 17px}
+  .is-login .login-hint{padding:11px 12px}
+}
+@media (max-height:660px) and (min-width:768px){
+  .is-login header.topbar{gap:15px}
+  .is-login .login-brand-copy h2{font-size:clamp(34px,3.7vw,54px)}
+  .is-login .login-brand-copy p{margin-top:12px}
+  .is-login .login-brand-foot{font-size:8px}
+}

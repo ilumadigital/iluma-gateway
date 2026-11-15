@@ -61,17 +61,26 @@ $boostRejected=false;
 try{\Iluma\Gateway\BroadcasterBoost::choice($boostOrder,'staging','BOOST-G-DAY','iradiosgr',2990);}
 catch(\Iluma\Gateway\HttpError){$boostRejected=true;}
 check($boostRejected,'One-off Boost cannot be purchased at another catalog price');
+check(\Iluma\Gateway\BroadcasterMandates::PRICE===
+ ['B-PREM'=>9900,'ADD-DSP'=>2790,'ADD-AN'=>690,'ADD-ADS'=>890],
+ 'New broadcaster account/station catalog prices are exact VAT-inclusive cents');
+check(\Iluma\Gateway\BroadcasterMandates::validContractAmount('B-PREM',11900)&&
+ \Iluma\Gateway\BroadcasterMandates::validContractAmount('B-PREM',9900)&&
+ \Iluma\Gateway\BroadcasterMandates::validContractAmount('ADD-AN',790)&&
+ \Iluma\Gateway\BroadcasterMandates::validContractAmount('ADD-AN',690)&&
+ !\Iluma\Gateway\BroadcasterMandates::validContractAmount('ADD-AN',500),
+ 'Signed legacy and current MIT amounts are allowed, unrelated prices refused');
 $accountConsent=['auto_renew'=>true,
  'recurring_consent_version'=>\Iluma\Gateway\BroadcasterMandates::CONSENT];
-check(\Iluma\Gateway\BroadcasterMandates::choice($accountConsent,'staging','B-PREM','iradiosgr',11900)==='B-PREM',
+check(\Iluma\Gateway\BroadcasterMandates::choice($accountConsent,'staging','B-PREM','iradiosgr',9900)==='B-PREM',
  'Broadcaster account Premium accepts explicit monthly consent');
 $addonConsent=$accountConsent+['resource_id'=>$stationRef];
-check(\Iluma\Gateway\BroadcasterMandates::choice($addonConsent,'staging','ADD-AN','iradiosgr',790)==='ADD-AN',
+check(\Iluma\Gateway\BroadcasterMandates::choice($addonConsent,'staging','ADD-AN','iradiosgr',690)==='ADD-AN',
  'Station Analytics accepts independent recurring consent');
 $addonRejected=false;
 try{\Iluma\Gateway\BroadcasterMandates::choice(
  ['auto_renew'=>true,'recurring_consent_version'=>\Iluma\Gateway\BroadcasterMandates::CONSENT],
- 'staging','ADD-AN','iradiosgr',790);}
+ 'staging','ADD-AN','iradiosgr',690);}
 catch(\Iluma\Gateway\HttpError){$addonRejected=true;}
 check($addonRejected,'Station add-on rejects missing station ID');
 $addonRejected=false;

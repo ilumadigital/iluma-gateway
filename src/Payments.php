@@ -225,16 +225,25 @@ final class Payments {
   ],$rows)];
  }
  public static function find(array $credential,string $id):array {
-  $p=Db::one(Db::get($credential['environment']),'SELECT * FROM payments WHERE id=? AND application_id=?',[$id,(int)$credential['application_id']]);
+  $qa=ProductionQa::isCredential($credential);
+  $p=$qa
+   ?Db::one(Db::get('production'),'SELECT * FROM payments WHERE id=? AND application_id=? AND qa_credential_id=?',
+     [$id,(int)$credential['application_id'],(int)$credential['id']])
+   :Db::one(Db::get($credential['environment']),'SELECT * FROM payments WHERE id=? AND application_id=?',[$id,(int)$credential['application_id']]);
   if(!$p)throw new HttpError(404,'Payment not found');return self::publicPayment($p);
  }
  // Recover an EXISTING payment without creating a checkout or calling Nexi.
  // Credential application and environment are mandatory query boundaries.
  public static function findByRequestKey(array $credential,string $requestKey):array {
   if(!preg_match('/^[A-Za-z0-9._:-]{1,128}$/D',$requestKey))throw new HttpError(400,'Invalid request key');
-  $p=Db::one(Db::get($credential['environment']),
-   'SELECT * FROM payments WHERE application_id=? AND request_key=?',
-   [(int)$credential['application_id'],$requestKey]);
+  $qa=ProductionQa::isCredential($credential);
+  $p=$qa
+   ?Db::one(Db::get('production'),
+     'SELECT * FROM payments WHERE application_id=? AND request_key=? AND qa_credential_id=?',
+     [(int)$credential['application_id'],$requestKey,(int)$credential['id']])
+   :Db::one(Db::get($credential['environment']),
+     'SELECT * FROM payments WHERE application_id=? AND request_key=?',
+     [(int)$credential['application_id'],$requestKey]);
   if(!$p)throw new HttpError(404,'Payment not found');
   return self::publicPayment($p);
  }

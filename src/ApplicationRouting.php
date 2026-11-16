@@ -65,6 +65,14 @@ final class ApplicationRouting {
   $return=$return!==''?self::validReturn($return):'';
   if($enabled&&($url===''||$return===''))
    throw new HttpError(422,'Απαιτείται Webhook URL και Return Path για ενεργοποίηση.');
+  if($enabled){
+   $active=Db::one($registry,"SELECT COUNT(*) AS n FROM application_credentials
+      WHERE application_id=? AND environment=? AND enabled=1",[$appId,$env]);
+   if((int)($active['n']??0)<1)
+    throw new HttpError(422,'Δημιούργησε πρώτα ένα ενεργό API Key για το περιβάλλον.');
+   // Validate and pin only publicly routable callback DNS.
+   self::publicDnsPin($url);
+  }
   $value=Security::json(['enabled'=>$enabled,'webhook_url'=>$url,'return_path'=>$return]);
   Db::exec(Db::get($env),'INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)',
     [self::key($appId),$value]);

@@ -34,6 +34,7 @@ final class Security {
   catch(\PDOException $e) { if($e->getCode()==='23000') throw new HttpError(409,'Request replay detected');throw $e; }
   Db::exec($db,'UPDATE application_credentials SET last_used_at=UTC_TIMESTAMP() WHERE id=?',[(int)$record['id']]);
   if($record['environment']==='production' && !Config::liveAllowed()) throw new HttpError(503,'Production payments are locked');
+  ProductionQa::restrictApi($record,$method,$path);
   return $record;
  }
  public static function headers(): array { $h=[];foreach($_SERVER as $k=>$v) if(str_starts_with($k,'HTTP_')) $h[strtolower(str_replace('_','-',substr($k,5)))]=(string)$v;return $h; }

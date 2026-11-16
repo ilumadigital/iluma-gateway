@@ -21,7 +21,7 @@ final class SavedCards {
    throw new HttpError(422,'Explicit stored-card consent required');
   if(!$save && $version!==null)
    throw new HttpError(422,'Unexpected card consent');
-  if(($save||$reuse)&&($env!=='staging'||$sku!=='L-PREM'||$slug!=='iradiosgr'))
+  if(($save||$reuse)&&(!in_array($env,['staging','production'],true)||$sku!=='L-PREM'||$slug!=='iradiosgr'||($env==='production'&&!Config::stageProductionAllowed())))
    throw new HttpError(403,'Stored cards are staging-only');
   return ['save'=>$save,'reuse'=>$reuse,'version'=>$save?self::CONSENT_VERSION:null];
  }
@@ -78,11 +78,11 @@ final class SavedCards {
   return null;
  }
  public static function publicForCustomer(array $credential,string $external):array {
-  if($credential['environment']!=='staging'||$credential['slug']!=='iradiosgr')
+  if(!in_array($credential['environment'],['staging','production'],true)||$credential['slug']!=='iradiosgr'||($credential['environment']==='production'&&!Config::stageProductionAllowed()))
    throw new HttpError(403,'Stored cards staging only');
   if(!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
    throw new HttpError(422,'Invalid customer scope');
-  $db=Db::get('staging');
+  $db=Db::get($credential['environment']);
   $customer=Db::one($db,'SELECT id FROM customers WHERE application_id=? AND external_user_id=?',
    [(int)$credential['application_id'],$external]);
   if(!$customer)return ['state'=>'none','type'=>null,'automatic_renewal'=>false];
@@ -93,13 +93,13 @@ final class SavedCards {
    'automatic_renewal'=>false];
  }
  public static function verifyPaid(string $env,string $paymentId):void {
-  if($env!=='staging')return;
-  $db=Db::get('staging');
+  if(!in_array($env,['staging','production'],true))return;
+  $db=Db::get($env);
   $card=Db::one($db,"SELECT a.* FROM saved_card_agreements a
    JOIN payments p ON p.id=a.payment_id
    WHERE a.payment_id=? AND p.status='paid' AND a.status='pending'",[$paymentId]);
   if(!$card)return;
-  $reply=NexiClient::forEnvironment('staging')->contractsForCustomer($card['provider_customer_id']);
+  $reply=NexiClient::forEnvironment($env)->contractsForCustomer($card['provider_customer_id']);
   $found=false;
   foreach(($reply['contracts']??[]) as $contract){
    if(is_array($contract) && ($contract['contractId']??null)===$card['contract_id'] &&
@@ -115,7 +115,7 @@ final class SavedCards {
  // deactivate at Nexi. A failed provider call stays pending for cron retry.
  public static function revoke(array $credential,string $external):array {
   self::publicForCustomer($credential,$external);
-  $db=Db::get('staging');
+  $db=Db::get($credential['environment']);
   $customer=Db::one($db,'SELECT id FROM customers WHERE application_id=? AND external_user_id=?',
    [(int)$credential['application_id'],$external]);
   if(!$customer)return ['state'=>'none','automatic_renewal'=>false];
@@ -123,17 +123,21 @@ final class SavedCards {
     WHERE application_id=? AND customer_id=? AND status IN ('active','pending')",
     [(int)$credential['application_id'],$customer['id']]);
   // A bounded attempt; the regular staging worker retries any failure.
-  self::processRevocations('staging',5);
+  self::processRevocations($credential['environment'],5);
   return self::publicForCustomer($credential,$external);
  }
  public static function processRevocations(string $env,int $limit=20):void {
-  if($env!=='staging')return;
-  $db=Db::get('staging');
-  $rows=Db::all($db,"SELECT id,contract_id FROM saved_card_agreements
-    WHERE status='revocation_pending' ORDER BY updated_at ASC LIMIT ".max(1,min($limit,50)));
+  if(!in_array($env,['staging','production'],true))return;
+  $db=Db::get($env);
+  $rows=Db::all($db,$env==='production'
+    ?"SELECT a.id,a.contract_id FROM saved_card_agreements a JOIN payments p ON p.id=a.payment_id
+      WHERE p.iradios_stage_routed=1 AND a.status='revocation_pending'
+      ORDER BY a.updated_at ASC LIMIT ".max(1,min($limit,50))
+    :"SELECT id,contract_id FROM saved_card_agreements
+      WHERE status='revocation_pending' ORDER BY updated_at ASC LIMIT ".max(1,min($limit,50)));
   foreach($rows as $card){
    try {
-    $reply=NexiClient::forEnvironment('staging')->deactivateContract($card['contract_id']);
+    $reply=NexiClient::forEnvironment($env)->deactivateContract($card['contract_id']);
     Db::exec($db,"UPDATE saved_card_agreements SET status='revoked',deactivated_at=UTC_TIMESTAMP()
       WHERE id=? AND status='revocation_pending'",[$card['id']]);
    }catch(\Throwable $e){
@@ -143,13 +147,14 @@ final class SavedCards {
   }
  }
  public static function syncPending(string $env,int $limit=15):void {
-  if($env!=='staging')return;
-  $rows=Db::all(Db::get('staging'),"SELECT a.payment_id FROM saved_card_agreements a
+  if(!in_array($env,['staging','production'],true))return;
+  $productionScope=$env==='production'?' AND p.iradios_stage_routed=1':'';
+  $rows=Db::all(Db::get($env),"SELECT a.payment_id FROM saved_card_agreements a
     JOIN payments p ON p.id=a.payment_id
-    WHERE a.status='pending' AND p.status='paid' ORDER BY a.created_at
-    LIMIT ".max(1,min($limit,40)));
+    WHERE a.status='pending' AND p.status='paid'".
+    $productionScope." ORDER BY a.created_at LIMIT ".max(1,min($limit,40)));
   foreach($rows as $row){
-   try{self::verifyPaid('staging',$row['payment_id']);}
+   try{self::verifyPaid($env,$row['payment_id']);}
    catch(\Throwable $e){error_log('Nexi CIT contract verification deferred');}
   }
  }

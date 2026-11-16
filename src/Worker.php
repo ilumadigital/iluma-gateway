@@ -40,18 +40,28 @@ final class Worker {
   $extra=$paymentId!==null?' AND payment_id=?':'';
   $params=$paymentId!==null?[$paymentId]:[];
   Db::exec($db,"UPDATE outgoing_events SET status='pending' WHERE status='sending' AND next_attempt_at<=UTC_TIMESTAMP()".$extra,$params);
-  $records=Db::all($db,"SELECT * FROM outgoing_events WHERE status='pending' AND next_attempt_at<=UTC_TIMESTAMP()".$extra." ORDER BY created_at LIMIT ".max(1,min($limit,100)),$params);
+  $sql=$env==='production'
+   ?"SELECT e.*,p.iradios_stage_routed,p.origin_credential_id
+     FROM outgoing_events e JOIN payments p ON p.id=e.payment_id
+     WHERE e.status='pending' AND e.next_attempt_at<=UTC_TIMESTAMP()".
+     ($paymentId!==null?' AND e.payment_id=?':'')
+   :"SELECT * FROM outgoing_events WHERE status='pending' AND next_attempt_at<=UTC_TIMESTAMP()".$extra;
+  $records=Db::all($db,$sql.($env==='production'?" ORDER BY e.created_at LIMIT ":" ORDER BY created_at LIMIT ").max(1,min($limit,100)),$params);
   foreach($records as $event){
    // Atomic claim for multi-worker execution.
    if(!Db::exec($db,"UPDATE outgoing_events SET status='sending',next_attempt_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 2 MINUTE) WHERE id=? AND status='pending'",[$event['id']]))continue;
    $code=null;try {
-    $credential=Db::one(Db::get('registry'),"SELECT secret_box FROM application_credentials WHERE application_id=? AND environment=? AND enabled=1 ORDER BY created_at DESC LIMIT 1",[$event['application_id'],$env]);
+    $stageRouted=$env==='production'&&!empty($event['iradios_stage_routed']);
+    $credential=$stageRouted
+     ?Db::one(Db::get('registry'),"SELECT secret_box FROM application_credentials WHERE id=? AND application_id=? AND environment='production' AND enabled=1",[(int)$event['origin_credential_id'],$event['application_id']])
+     :Db::one(Db::get('registry'),"SELECT secret_box FROM application_credentials WHERE application_id=? AND environment=? AND enabled=1 ORDER BY created_at DESC LIMIT 1",[$event['application_id'],$env]);
     if(!$credential)throw new \RuntimeException('No outbound credential');
+    $destination=$stageRouted?Config::stagePaymentWebhook():Config::webhook($env);
     $secret=Security::decrypt($credential['secret_box']);$body=(string)$event['body_json'];$time=(string)time();$nonce=Security::id();
-    $path=(string)parse_url(Config::webhook($env),PHP_URL_PATH);
+    $path=(string)parse_url($destination,PHP_URL_PATH);
     $sig=Security::signature($secret,$time,$nonce,'POST',$path,$body);
     if(!function_exists('curl_init'))throw new \RuntimeException('cURL missing');
-    $ch=curl_init(Config::webhook($env));
+    $ch=curl_init($destination);
     curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$body,
      CURLOPT_HTTPHEADER=>['Content-Type: application/json','X-Iluma-Timestamp: '.$time,'X-Iluma-Nonce: '.$nonce,'X-Iluma-Signature: '.$sig,'X-Iluma-Event-Id: '.$event['id']],
      CURLOPT_TIMEOUT=>12,CURLOPT_CONNECTTIMEOUT=>4,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_SSL_VERIFYPEER=>true,CURLOPT_SSL_VERIFYHOST=>2,

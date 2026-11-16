@@ -15,8 +15,9 @@ final class BroadcasterBoost {
  ];
  public static function choice(array $body,string $env,string $sku,string $slug,int $price):?string {
   if(!array_key_exists($sku,self::PRICE))return null;
-  if($env!=='staging'||$slug!=='iradiosgr'||Config::get('APP_ENV')==='production')
-   throw new HttpError(403,'BOOST_STAGING_ONLY');
+  if($slug!=='iradiosgr'||!(($env==='staging'&&Config::get('APP_ENV')!=='production')||
+    ($env==='production'&&Config::stageProductionAllowed())))
+   throw new HttpError(403,'BOOST_ENVIRONMENT_NOT_ALLOWED');
   if($price!==self::PRICE[$sku])throw new HttpError(422,'BOOST_PRICE_MISMATCH');
   $station=$body['resource_id']??null;
   if(!is_string($station)||!preg_match('/^[a-f0-9]{24}$/D',$station))

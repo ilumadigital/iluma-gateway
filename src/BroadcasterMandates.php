@@ -15,8 +15,9 @@ final class BroadcasterMandates {
   return isset(self::PRICE[$sku])&&($amount===self::PRICE[$sku]||$amount===self::LEGACY_PRICE[$sku]);
  }
  private static function isStaging(array $credential):bool {
-  return $credential['environment']==='staging'&&($credential['slug']??'')==='iradiosgr'
-   &&Config::get('APP_ENV')!=='production';
+  return ($credential['slug']??'')==='iradiosgr' && (
+   ($credential['environment']==='staging'&&Config::get('APP_ENV')!=='production')||
+   ($credential['environment']==='production'&&Config::stageProductionAllowed()));
  }
  public static function resource(string $sku,mixed $value):?string {
   if(!array_key_exists($sku,self::PRICE))throw new HttpError(422,'BROADCASTER_SKU_INVALID');
@@ -30,8 +31,9 @@ final class BroadcasterMandates {
  }
  public static function choice(array $body,string $env,string $sku,string $slug,int $price):?string {
   if(!array_key_exists($sku,self::PRICE))return null;
-  if($env!=='staging'||$slug!=='iradiosgr'||Config::get('APP_ENV')==='production')
-   throw new HttpError(403,'BROADCASTER_STAGING_ONLY');
+  if($slug!=='iradiosgr'||!(($env==='staging'&&Config::get('APP_ENV')!=='production')||
+    ($env==='production'&&Config::stageProductionAllowed())))
+   throw new HttpError(403,'BROADCASTER_ENVIRONMENT_NOT_ALLOWED');
   if($price!==self::PRICE[$sku])throw new HttpError(422,'BROADCASTER_PRICE_MISMATCH');
   if(($body['auto_renew']??null)!==true||
     ($body['recurring_consent_version']??null)!==self::CONSENT)
@@ -74,7 +76,7 @@ final class BroadcasterMandates {
     !is_string($sku)||!array_key_exists($sku,self::PRICE))
    throw new HttpError(422,'BROADCASTER_TARGET_INVALID');
   $resource=self::resource($sku,$body['resource_id']??null);
-  return [Db::get('staging'),(int)$credential['application_id'],$external,$sku,$resource];
+  return [Db::get($credential['environment']),(int)$credential['application_id'],$external,$sku,$resource];
  }
  public static function status(array $credential,array $body):array {
   [$db,$app,$external,$sku,$resource]=self::target($credential,$body);
@@ -94,8 +96,11 @@ final class BroadcasterMandates {
    'amount_cents'=>isset($row['amount_cents'])?(int)$row['amount_cents']:self::PRICE[$sku],
    'state'=>$row['status']??'none',
    'auto_renew'=>($row['status']??null)==='active',
-   'execution_enabled'=>Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'
-    &&Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1',
+   'execution_enabled'=>$credential['environment']==='production'
+    ?(Config::stageProductionAllowed()&&Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'
+      &&Config::get('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED')==='1')
+    :(Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'
+      &&Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1'),
    'next_charge_at'=>!empty($row['next_due_at'])?str_replace(' ','T',$row['next_due_at']).'Z':null,
    'paid_through_at'=>!empty($row['paid_through_at'])?str_replace(' ','T',$row['paid_through_at']).'Z':null,
    'cancelled_at'=>!empty($row['cancelled_at'])?str_replace(' ','T',$row['cancelled_at']).'Z':null
@@ -133,7 +138,7 @@ final class BroadcasterMandates {
       AND status IN ('pending','verification_pending')",[$paymentId]);
  }
  public static function verifyPaid(string $env,string $paymentId):void {
-  if($env!=='staging')return;
+  if(!in_array($env,['staging','production'],true))return;
   $db=Db::get($env);
   if(!self::schemaReady($db))return;
   $m=Db::one($db,"SELECT m.* FROM broadcaster_mandates m
@@ -141,7 +146,7 @@ final class BroadcasterMandates {
    WHERE p.id=? AND p.status='paid'
     AND m.status IN ('pending','verification_pending')",[$paymentId]);
   if(!$m)return;
-  $response=NexiClient::forEnvironment('staging')->contractsForCustomer($m['provider_customer_id']);
+  $response=NexiClient::forEnvironment($env)->contractsForCustomer($m['provider_customer_id']);
   $found=false;
   foreach(($response['contracts']??[]) as $contract){
    if(is_array($contract)&&($contract['contractId']??null)===$m['contract_id']
@@ -206,13 +211,22 @@ final class BroadcasterMandates {
   }
  }
  public static function chargeDue(string $env,int $limit=5):void {
-  if($env!=='staging'||Config::get('APP_ENV')==='production'
-   ||Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')!=='1'
-   ||Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')!=='1')return;
-  $db=Db::get('staging');if(!self::schemaReady($db))return;
-  $rows=Db::all($db,"SELECT id FROM broadcaster_mandates
-   WHERE status='active' AND verified_at IS NOT NULL AND cancelled_at IS NULL
-    AND next_due_at<=UTC_TIMESTAMP() ORDER BY next_due_at LIMIT ".max(1,min(5,$limit)));
+  $enabled=($env==='staging'&&Config::get('APP_ENV')!=='production'&&
+    Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
+    Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1')||
+   ($env==='production'&&Config::stageProductionAllowed()&&
+    Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&
+    Config::get('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED')==='1');
+  if(!$enabled)return;
+  $db=Db::get($env);if(!self::schemaReady($db))return;
+  $rows=Db::all($db,$env==='production'
+   ?"SELECT m.id FROM broadcaster_mandates m JOIN payments p ON p.id=m.initial_payment_id
+     WHERE p.iradios_stage_routed=1 AND m.status='active' AND m.verified_at IS NOT NULL
+       AND m.cancelled_at IS NULL AND m.next_due_at<=UTC_TIMESTAMP()
+     ORDER BY m.next_due_at LIMIT ".max(1,min(5,$limit))
+   :"SELECT id FROM broadcaster_mandates
+     WHERE status='active' AND verified_at IS NOT NULL AND cancelled_at IS NULL
+       AND next_due_at<=UTC_TIMESTAMP() ORDER BY next_due_at LIMIT ".max(1,min(5,$limit)));
   foreach($rows as $row){
    $db->beginTransaction();$payment=null;
    try{
@@ -239,10 +253,22 @@ final class BroadcasterMandates {
     $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
     $request='bmit-'.$m['id'].'-'.gmdate('YmdHis',strtotime($m['next_due_at'].' UTC'));
     $hash=hash('sha256',Security::json([$m['id'],$m['next_due_at'],$m['amount_cents'],'EUR']));
-    Db::exec($db,"INSERT INTO payments
-     (id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,currency,status)
-     VALUES(?,?,?,?,?,?,?,?,'EUR','pending')",
-     [$pid,$m['application_id'],$m['customer_id'],$product['id'],$order,$request,$hash,$m['amount_cents']]);
+    if($env==='production'){
+     $origin=Db::one($db,'SELECT iradios_stage_routed,origin_credential_id FROM payments WHERE id=?',
+       [$m['initial_payment_id']]);
+     if(!$origin||empty($origin['iradios_stage_routed'])||empty($origin['origin_credential_id']))
+      throw new \RuntimeException('Production broadcaster MIT origin credential missing');
+     Db::exec($db,"INSERT INTO payments
+      (id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,currency,status,iradios_stage_routed,origin_credential_id)
+      VALUES(?,?,?,?,?,?,?,?,'EUR','pending',1,?)",
+      [$pid,$m['application_id'],$m['customer_id'],$product['id'],$order,$request,$hash,
+       $m['amount_cents'],(int)$origin['origin_credential_id']]);
+    }else{
+     Db::exec($db,"INSERT INTO payments
+      (id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,currency,status)
+      VALUES(?,?,?,?,?,?,?,?,'EUR','pending')",
+      [$pid,$m['application_id'],$m['customer_id'],$product['id'],$order,$request,$hash,$m['amount_cents']]);
+    }
     Db::exec($db,"INSERT INTO broadcaster_cycles
      (id,mandate_id,cycle_due_at,payment_id,status)
      VALUES(?,?,?,?, 'pending')",[Security::id(),$m['id'],$m['next_due_at'],$pid]);
@@ -263,7 +289,7 @@ final class BroadcasterMandates {
      $db->commit();continue;
     }
     try{
-     NexiClient::forEnvironment('staging')->startBroadcasterMit(
+     NexiClient::forEnvironment($env)->startBroadcasterMit(
       $payment['order'],$m['provider_customer_id'],$m['contract_id'],(int)$m['amount_cents']);
      Payments::log($db,$payment['id'],'mit_submitted','Broadcaster MIT submitted, confirmation pending.');
     }catch(\Throwable $e){
@@ -275,26 +301,32 @@ final class BroadcasterMandates {
     }
     $db->commit();
    }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();error_log('Broadcaster MIT requires reconciliation');}
-   try{Payments::reconcile('staging',$payment['order']);}
+   try{Payments::reconcile($env,$payment['order']);}
    catch(\Throwable $e){error_log('Broadcaster MIT reconciliation pending');}
   }
  }
  public static function pendingVerification(string $env,int $limit=10):void {
-  if($env!=='staging'||!self::schemaReady(Db::get($env)))return;
+  if(!in_array($env,['staging','production'],true)||!self::schemaReady(Db::get($env)))return;
+  $productionScope=$env==='production'?' AND p.iradios_stage_routed=1':'';
   $rows=Db::all(Db::get($env),"SELECT m.initial_payment_id FROM broadcaster_mandates m
    JOIN payments p ON p.id=m.initial_payment_id
-   WHERE m.status IN ('pending','verification_pending') AND p.status='paid'
-   ORDER BY m.created_at LIMIT ".max(1,min($limit,30)));
+   WHERE m.status IN ('pending','verification_pending') AND p.status='paid'".
+   $productionScope." ORDER BY m.created_at LIMIT ".max(1,min($limit,30)));
   foreach($rows as $row)try{self::verifyPaid($env,$row['initial_payment_id']);}
    catch(\Throwable $e){error_log('Broadcaster contract verification deferred');}
  }
  public static function pendingDeactivation(string $env,int $limit=10):void {
-  if($env!=='staging'||!self::schemaReady(Db::get($env)))return;
-  $rows=Db::all(Db::get($env),"SELECT id,contract_id FROM broadcaster_mandates
-   WHERE status='cancelled' AND deactivated_at IS NULL ORDER BY cancelled_at
-   LIMIT ".max(1,min($limit,30)));
+  if(!in_array($env,['staging','production'],true)||!self::schemaReady(Db::get($env)))return;
+  $db=Db::get($env);
+  $rows=Db::all($db,$env==='production'
+   ?"SELECT m.id,m.contract_id FROM broadcaster_mandates m JOIN payments p ON p.id=m.initial_payment_id
+     WHERE p.iradios_stage_routed=1 AND m.status='cancelled' AND m.deactivated_at IS NULL
+     ORDER BY m.cancelled_at LIMIT ".max(1,min($limit,30))
+   :"SELECT id,contract_id FROM broadcaster_mandates
+     WHERE status='cancelled' AND deactivated_at IS NULL ORDER BY cancelled_at
+     LIMIT ".max(1,min($limit,30)));
   foreach($rows as $row)try{
-   NexiClient::forEnvironment('staging')->deactivateContract($row['contract_id']);
+   NexiClient::forEnvironment($env)->deactivateContract($row['contract_id']);
    Db::exec(Db::get($env),"UPDATE broadcaster_mandates
     SET deactivated_at=UTC_TIMESTAMP() WHERE id=? AND status='cancelled'",[$row['id']]);
   }catch(\Throwable $e){error_log('Broadcaster contract deactivation deferred');}

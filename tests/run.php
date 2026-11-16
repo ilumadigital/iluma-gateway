@@ -105,10 +105,11 @@ $checkoutSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
 $statusSource=file_get_contents(dirname(__DIR__).'/src/BroadcasterMandates.php');
 check($autoSetupSource!==false&&
  str_contains($autoSetupSource,"Db::get('staging')")&&
- !str_contains($autoSetupSource,"Db::get('production')")&&
+ str_contains($autoSetupSource,"if($". "credential['environment']==='production')")&&
+ str_contains($autoSetupSource,'BROADCASTER_PRODUCTION_SCHEMA_OR_CATALOG_NOT_READY')&&
  str_contains($autoSetupSource,'GET_LOCK(')&&
  str_contains($autoSetupSource,'BROADCASTER_STAGING_CATALOG_MISMATCH'),
- 'Auto-bootstrap uses only staging DB, serializes and validates the catalog');
+ 'Auto-bootstrap modifies staging only; production catalog is read-only and preflighted');
 check($checkoutSource!==false&&
  strpos($checkoutSource,'BroadcasterStagingBootstrap::ensure($credential)')<
  strpos($checkoutSource,'SELECT * FROM products WHERE application_id=? AND sku=? AND enabled=1'),
@@ -179,6 +180,43 @@ check(\Iluma\Gateway\CheckoutReturn::url('staging','/checkout/result','IL'.str_r
  'https://stage.iradios.gr/premium?gateway_return=result&order=IL'.str_repeat('A',24),'Gateway returns to iRadios staging after Nexi');
 check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/cancel','IL'.str_repeat('B',24)) ===
  'https://play.iradios.gr/premium?gateway_return=cancel&order=IL'.str_repeat('B',24),'Production callback targets production iRadios only');
+
+check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result','IL'.str_repeat('C',24),'ADV-BUDGET',true) ===
+ 'https://stage.iradios.gr/backoffice/agency/campaigns?gateway_return=result&order=IL'.str_repeat('C',24),
+ 'New iRadios Production advertising returns to stage by immutable payment marker');
+check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result','IL'.str_repeat('D',24),'B-PREM',true) ===
+ 'https://stage.iradios.gr/backoffice/pro-features?gateway_return=result&order=IL'.str_repeat('D',24),
+ 'New iRadios Production broadcaster returns to stage by immutable payment marker');
+// A production API credential alone must not enable routing or charge real cards.
+$stageProdPrevious=[];
+foreach(['APP_ENV','PRODUCTION_ENABLED','IRADIOS_STAGE_PRODUCTION_ENABLED',
+  'IRADIOS_STAGE_PRODUCTION_WEBHOOK'] as $flag)$stageProdPrevious[$flag]=getenv($flag);
+putenv('APP_ENV=production');putenv('PRODUCTION_ENABLED=1');
+putenv('IRADIOS_STAGE_PRODUCTION_ENABLED=0');
+check(!\Iluma\Gateway\Config::stageProductionAllowed(),
+ 'New iRadios production is disabled until its explicit route flag is approved');
+putenv('IRADIOS_STAGE_PRODUCTION_ENABLED=1');
+check(\Iluma\Gateway\Config::stageProductionAllowed(),
+ 'Explicit commercial iRadios production gate requires production runtime');
+putenv('IRADIOS_STAGE_PRODUCTION_WEBHOOK=https://stage.iradios.gr/api/gateway/webhook');
+check(\Iluma\Gateway\Config::stagePaymentWebhook()==='https://stage.iradios.gr/api/gateway/webhook',
+ 'New iRadios commercial HMAC outbox is pinned to stage origin');
+putenv('IRADIOS_STAGE_PRODUCTION_WEBHOOK=https://play.iradios.gr/api/gateway/webhook');
+try{\Iluma\Gateway\Config::stagePaymentWebhook();$badRouteAccepted=true;}
+catch(\RuntimeException){$badRouteAccepted=false;}
+check(!$badRouteAccepted,'The legacy origin can never replace the new stage commercial callback');
+foreach($stageProdPrevious as $flag=>$value){
+ if($value===false)putenv($flag);else putenv($flag.'='.$value);
+}
+$commercialWorkerSource=file_get_contents(dirname(__DIR__).'/src/Worker.php');
+$commercialPaymentsSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
+$commercialSql=file_get_contents(dirname(__DIR__).'/database/migrations/20261116_iradios_stage_production_routing.sql');
+check(str_contains($commercialWorkerSource,'origin_credential_id')&&
+ str_contains($commercialWorkerSource,'Config::stagePaymentWebhook()')&&
+ str_contains($commercialPaymentsSource,'iradios_stage_routed')&&
+ str_contains($commercialSql,'DEFAULT 0'),
+ 'New payment records pin the original credential; all historical production records retain their route');
+
 foreach(['https://evil.test/','/checkout/unexpected'] as $invalidPath){
  try{\Iluma\Gateway\CheckoutReturn::url('staging',$invalidPath,'IL'.str_repeat('A',24));$returnAccepted=true;}
  catch(\InvalidArgumentException){$returnAccepted=false;}

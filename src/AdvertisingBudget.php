@@ -75,7 +75,13 @@ final class AdvertisingBudget {
   if(!self::permitted($credential))throw new HttpError(503,'ADVERTISING_STAGING_ONLY');
   if(!self::isolated())throw new HttpError(503,'ADVERTISING_DATABASE_NOT_ISOLATED');
   if(self::$ready)return;
-  $db=Db::get('staging');$app=(int)$credential['application_id'];
+  $db=Db::get($credential['environment']);$app=(int)$credential['application_id'];
+  if($credential['environment']==='production'){
+   // No on-demand production DDL or automatic product seeding.
+   if(!self::ready($db,$app))
+    throw new HttpError(503,'ADVERTISING_PRODUCTION_SCHEMA_OR_CATALOG_NOT_READY');
+   return;
+  }
   try {
    if(self::ready($db,$app)){self::$ready=true;return;}
    $lock=Db::one($db,'SELECT GET_LOCK(?,5) AS acquired',[self::LOCK]);

@@ -141,7 +141,7 @@ final class AdminManagement {
    '<label>Slug<input name="slug" maxlength="70" pattern="[a-z][a-z0-9-]{2,69}" required placeholder="my-application"></label>'.
    '<label>Staging origin<input name="staging_origin" type="url" placeholder="https://stage.example.gr" required></label>'.
    '<label>Production origin<input name="production_origin" type="url" placeholder="https://app.example.gr" required></label>'.
-   '<p class="management-hint">Η δημιουργία δεν ενεργοποιεί χρεώσεις. Χρειάζεται API Key και επιβεβαιωμένη δρομολόγηση webhooks.</p>'.
+   '<p class="management-hint">Η δημιουργία δεν ενεργοποιεί χρεώσεις. Οι νέες εφαρμογές παραμένουν ασφαλώς κλειδωμένες για πληρωμές μέχρι να υλοποιηθεί και να επιβεβαιωθεί η δική τους δρομολόγηση επιστροφών/webhooks.</p>'.
    '<button type="submit">Προσθήκη εφαρμογής</button></form></article>';
   return $s;
  }

@@ -1,0 +1,813 @@
+{
+  "version": 1,
+  "database": "iluma_production",
+  "application": "iradiosgr",
+  "catalog": {
+    "L-PREM": 399,
+    "L-WINBACK-199": 199,
+    "B-PREM": 9900,
+    "ADD-DSP": 2790,
+    "ADD-ADS": 890,
+    "ADD-AN": 690,
+    "BOOST-T-DAY": 490,
+    "BOOST-T-WEEK": 2990,
+    "BOOST-T-2W": 5490,
+    "BOOST-T-MONTH": 9900,
+    "BOOST-T-YEAR": 89000,
+    "BOOST-G-DAY": 2900,
+    "BOOST-G-WEEK": 17900,
+    "BOOST-G-2W": 34900,
+    "BOOST-G-MONTH": 79900,
+    "BOOST-G-YEAR": 848900,
+    "ADV-BUDGET": 100
+  },
+  "tables": {
+    "saved_card_agreements": {
+      "columns": {
+        "id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "payment_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "application_id": {
+          "type": "bigint unsigned",
+          "nullable": false
+        },
+        "customer_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "provider_customer_id": {
+          "type": "varchar(27)",
+          "nullable": false
+        },
+        "contract_id": {
+          "type": "varchar(27)",
+          "nullable": false
+        },
+        "contract_type": {
+          "type": "varchar(22)",
+          "nullable": false
+        },
+        "consent_version": {
+          "type": "varchar(80)",
+          "nullable": false
+        },
+        "consent_at": {
+          "type": "datetime",
+          "nullable": false
+        },
+        "status": {
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        "verified_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "deactivated_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "last_checked_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "created_at": {
+          "type": "datetime",
+          "nullable": false
+        },
+        "updated_at": {
+          "type": "datetime",
+          "nullable": false
+        }
+      },
+      "indexes": [
+        {
+          "columns": [
+            "id"
+          ],
+          "unique": true,
+          "primary": true
+        },
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "contract_id"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "application_id",
+            "customer_id",
+            "status"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "status",
+            "last_checked_at"
+          ],
+          "unique": false
+        }
+      ],
+      "foreign": [
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "table": "payments",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "customer_id"
+          ],
+          "table": "customers",
+          "references": [
+            "id"
+          ]
+        }
+      ]
+    },
+    "recurring_mandates": {
+      "columns": {
+        "id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "application_id": {
+          "type": "bigint unsigned",
+          "nullable": false
+        },
+        "customer_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "initial_payment_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "provider_customer_id": {
+          "type": "varchar(27)",
+          "nullable": false
+        },
+        "contract_id": {
+          "type": "varchar(27)",
+          "nullable": false
+        },
+        "contract_type": {
+          "type": "varchar(24)",
+          "nullable": false
+        },
+        "sku": {
+          "type": "varchar(80)",
+          "nullable": false
+        },
+        "amount_cents": {
+          "type": "int unsigned",
+          "nullable": false
+        },
+        "currency": {
+          "type": "char(3)",
+          "nullable": false
+        },
+        "consent_version": {
+          "type": "varchar(80)",
+          "nullable": false
+        },
+        "consent_at": {
+          "type": "datetime",
+          "nullable": false
+        },
+        "status": {
+          "type": "enum('pending','active','cancelled','past_due','verification_pending')",
+          "nullable": false
+        },
+        "paid_through_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "next_due_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "anchor_day": {
+          "type": "tinyint unsigned",
+          "nullable": true
+        },
+        "verified_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "cancelled_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "deactivated_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "last_error_code": {
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        "created_at": {
+          "type": "datetime",
+          "nullable": false
+        },
+        "updated_at": {
+          "type": "datetime",
+          "nullable": false
+        }
+      },
+      "indexes": [
+        {
+          "columns": [
+            "id"
+          ],
+          "unique": true,
+          "primary": true
+        },
+        {
+          "columns": [
+            "initial_payment_id"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "contract_id"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "application_id",
+            "customer_id",
+            "status"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "status",
+            "next_due_at"
+          ],
+          "unique": false
+        }
+      ],
+      "foreign": [
+        {
+          "columns": [
+            "customer_id"
+          ],
+          "table": "customers",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "initial_payment_id"
+          ],
+          "table": "payments",
+          "references": [
+            "id"
+          ]
+        }
+      ]
+    },
+    "recurring_cycles": {
+      "columns": {
+        "id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "mandate_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "cycle_due_at": {
+          "type": "datetime",
+          "nullable": false
+        },
+        "payment_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "status": {
+          "type": "enum('pending','unknown','paid','failed','cancelled')",
+          "nullable": false
+        },
+        "created_at": {
+          "type": "datetime",
+          "nullable": false
+        }
+      },
+      "indexes": [
+        {
+          "columns": [
+            "id"
+          ],
+          "unique": true,
+          "primary": true
+        },
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "mandate_id",
+            "cycle_due_at"
+          ],
+          "unique": true
+        }
+      ],
+      "foreign": [
+        {
+          "columns": [
+            "mandate_id"
+          ],
+          "table": "recurring_mandates",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "table": "payments",
+          "references": [
+            "id"
+          ]
+        }
+      ]
+    },
+    "winback_claims": {
+      "columns": {
+        "id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "application_id": {
+          "type": "bigint unsigned",
+          "nullable": false
+        },
+        "customer_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "payment_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "expired_at": {
+          "type": "datetime",
+          "nullable": false
+        },
+        "redeemed_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "created_at": {
+          "type": "datetime",
+          "nullable": false
+        },
+        "updated_at": {
+          "type": "datetime",
+          "nullable": false
+        }
+      },
+      "indexes": [
+        {
+          "columns": [
+            "id"
+          ],
+          "unique": true,
+          "primary": true
+        },
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "application_id",
+            "customer_id"
+          ],
+          "unique": true
+        }
+      ],
+      "foreign": [
+        {
+          "columns": [
+            "customer_id"
+          ],
+          "table": "customers",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "table": "payments",
+          "references": [
+            "id"
+          ]
+        }
+      ]
+    },
+    "broadcaster_mandates": {
+      "columns": {
+        "id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "application_id": {
+          "type": "bigint unsigned",
+          "nullable": false
+        },
+        "customer_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "initial_payment_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "provider_customer_id": {
+          "type": "varchar(27)",
+          "nullable": false
+        },
+        "contract_id": {
+          "type": "varchar(27)",
+          "nullable": false
+        },
+        "sku": {
+          "type": "varchar(80)",
+          "nullable": false
+        },
+        "resource_id": {
+          "type": "char(24)",
+          "nullable": true
+        },
+        "amount_cents": {
+          "type": "int unsigned",
+          "nullable": false
+        },
+        "consent_version": {
+          "type": "varchar(80)",
+          "nullable": false
+        },
+        "consent_at": {
+          "type": "datetime",
+          "nullable": false
+        },
+        "status": {
+          "type": "enum('pending','active','verification_pending','cancelled','past_due')",
+          "nullable": false
+        },
+        "paid_through_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "next_due_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "anchor_day": {
+          "type": "tinyint unsigned",
+          "nullable": true
+        },
+        "verified_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "cancelled_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "deactivated_at": {
+          "type": "datetime",
+          "nullable": true
+        },
+        "last_error_code": {
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        "created_at": {
+          "type": "datetime",
+          "nullable": false
+        },
+        "updated_at": {
+          "type": "datetime",
+          "nullable": false
+        }
+      },
+      "indexes": [
+        {
+          "columns": [
+            "id"
+          ],
+          "unique": true,
+          "primary": true
+        },
+        {
+          "columns": [
+            "initial_payment_id"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "contract_id"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "application_id",
+            "customer_id",
+            "sku",
+            "resource_id",
+            "status"
+          ],
+          "unique": false
+        },
+        {
+          "columns": [
+            "status",
+            "next_due_at"
+          ],
+          "unique": false
+        }
+      ],
+      "foreign": [
+        {
+          "columns": [
+            "customer_id"
+          ],
+          "table": "customers",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "initial_payment_id"
+          ],
+          "table": "payments",
+          "references": [
+            "id"
+          ]
+        }
+      ]
+    },
+    "broadcaster_cycles": {
+      "columns": {
+        "id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "mandate_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "cycle_due_at": {
+          "type": "datetime",
+          "nullable": false
+        },
+        "payment_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "status": {
+          "type": "enum('pending','unknown','paid','failed','cancelled')",
+          "nullable": false
+        },
+        "created_at": {
+          "type": "datetime",
+          "nullable": false
+        }
+      },
+      "indexes": [
+        {
+          "columns": [
+            "id"
+          ],
+          "unique": true,
+          "primary": true
+        },
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "mandate_id",
+            "cycle_due_at"
+          ],
+          "unique": true
+        }
+      ],
+      "foreign": [
+        {
+          "columns": [
+            "mandate_id"
+          ],
+          "table": "broadcaster_mandates",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "table": "payments",
+          "references": [
+            "id"
+          ]
+        }
+      ]
+    },
+    "broadcaster_boost_scopes": {
+      "columns": {
+        "payment_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "application_id": {
+          "type": "bigint unsigned",
+          "nullable": false
+        },
+        "customer_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "sku": {
+          "type": "varchar(80)",
+          "nullable": false
+        },
+        "resource_id": {
+          "type": "char(24)",
+          "nullable": false
+        },
+        "amount_cents": {
+          "type": "int unsigned",
+          "nullable": false
+        },
+        "created_at": {
+          "type": "datetime",
+          "nullable": false
+        }
+      },
+      "indexes": [
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "unique": true,
+          "primary": true
+        },
+        {
+          "columns": [
+            "application_id",
+            "customer_id",
+            "resource_id",
+            "sku"
+          ],
+          "unique": false
+        }
+      ],
+      "foreign": [
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "table": "payments",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "customer_id"
+          ],
+          "table": "customers",
+          "references": [
+            "id"
+          ]
+        }
+      ]
+    },
+    "advertising_budget_scopes": {
+      "columns": {
+        "payment_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "application_id": {
+          "type": "bigint unsigned",
+          "nullable": false
+        },
+        "customer_id": {
+          "type": "char(32)",
+          "nullable": false
+        },
+        "campaign_id": {
+          "type": "char(24)",
+          "nullable": false
+        },
+        "quote_id": {
+          "type": "char(24)",
+          "nullable": false
+        },
+        "amount_cents": {
+          "type": "bigint",
+          "nullable": false
+        },
+        "created_at": {
+          "type": "datetime",
+          "nullable": false
+        }
+      },
+      "indexes": [
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "unique": true,
+          "primary": true
+        },
+        {
+          "columns": [
+            "application_id",
+            "quote_id"
+          ],
+          "unique": true
+        },
+        {
+          "columns": [
+            "application_id",
+            "campaign_id"
+          ],
+          "unique": false
+        }
+      ],
+      "foreign": [
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "table": "payments",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "customer_id"
+          ],
+          "table": "customers",
+          "references": [
+            "id"
+          ]
+        }
+      ]
+    }
+  },
+  "routing": {
+    "iradios_stage_routed": {
+      "type": "tinyint(1)",
+      "nullable": false
+    },
+    "origin_credential_id": {
+      "type": "bigint unsigned",
+      "nullable": true
+    }
+  }
+}

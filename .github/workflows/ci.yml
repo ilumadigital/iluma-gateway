@@ -95,7 +95,9 @@ jobs:
         run: |
           python3 -m py_compile deploy/vps/*.py tests/vps_migration.py tests/vps_topology.py
           python3 tests/vps_migration.py
+          python3 tests/production_billing.py
           bash -n deploy/vps/check-readiness.sh
+          bash -n deploy/vps/deploy-code.sh
           docker compose -f compose.vps.yml config --quiet
           python3 tests/vps_topology.py
 
@@ -163,3 +165,37 @@ jobs:
             test "$status" = 404
           done
           echo "PASS: Gateway Compose boots with synthetic secrets, serves Admin/assets and denies source"
+
+  production-billing-fixture:
+    name: Production prerequisites on disposable MySQL (no provider)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: integration-only-password
+          MYSQL_ROOT_HOST: "%"
+        ports:
+          - 3367:3306
+        options: >-
+          --health-cmd="mysqladmin ping -pintegration-only-password"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, sodium
+          coverage: none
+      - name: Verify restore, migration and runtime readiness against real MySQL
+        env:
+          BILLING_MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+        run: python3 tests/production_billing_mysql.py
+      - name: Verify offline tests remain isolated from production flags
+        env:
+          APP_ENV: production
+          PRODUCTION_ENABLED: '1'
+          IRADIOS_STAGE_PRODUCTION_ENABLED: '1'
+        run: php tests/run.php

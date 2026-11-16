@@ -2,6 +2,10 @@
 declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Security,PaymentState,Config,NexiClient,EnvLoader,AdminContext};
+// Offline tests must not inherit an operator's live rollout settings.
+foreach(['APP_ENV'=>'staging','PRODUCTION_ENABLED'=>'0','IRADIOS_STAGE_PRODUCTION_ENABLED'=>'0',
+ 'MIT_PRODUCTION_EXECUTION_ENABLED'=>'0','MIT_PRODUCTION_UAT_APPROVED'=>'0',
+ 'BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED'=>'0','BROADCASTER_MIT_PRODUCTION_UAT_APPROVED'=>'0'] as $name=>$value)putenv($name.'='.$value);
 putenv('MASTER_KEY_B64='.base64_encode(str_repeat('K',32)));
 $tests=0;
 function check(bool $ok,string $name):void {global $tests;$tests++;if(!$ok){fwrite(STDERR,"FAIL $name\n");exit(1);}echo "PASS $name\n";}
@@ -424,7 +428,27 @@ try{\Iluma\Gateway\SavedCards::choice([
  'save_card'=>true,'card_consent_version'=>\Iluma\Gateway\SavedCards::CONSENT_VERSION
  ],'production','L-PREM','iradiosgr');$prodAllowed=true;}
 catch(\Iluma\Gateway\HttpError){$prodAllowed=false;}
-check(!$prodAllowed,'Provider tokenization locked in production');
+check(!$prodAllowed,'Provider tokenization locked without explicit production routing');
+$gatePrevious=[];
+foreach(['APP_ENV','PRODUCTION_ENABLED','IRADIOS_STAGE_PRODUCTION_ENABLED'] as $name)$gatePrevious[$name]=getenv($name);
+foreach([
+ ['staging','1','1',false],['production','0','1',false],
+ ['production','1','0',false],['production','1','1',true]
+] as [$runtime,$live,$route,$expected]){
+ putenv('APP_ENV='.$runtime);putenv('PRODUCTION_ENABLED='.$live);putenv('IRADIOS_STAGE_PRODUCTION_ENABLED='.$route);
+ try{\Iluma\Gateway\SavedCards::choice([
+  'save_card'=>true,'card_consent_version'=>\Iluma\Gateway\SavedCards::CONSENT_VERSION
+ ],'production','L-PREM','iradiosgr');$accepted=true;}
+ catch(\Iluma\Gateway\HttpError){$accepted=false;}
+ check($accepted===$expected,'Production tokenization requires all three routing gates');
+}
+foreach($gatePrevious as $name=>$value){if($value===false)putenv($name);else putenv($name.'='.$value);}
+$billingManifest=\Iluma\Gateway\ProductionBillingReadiness::manifest();
+check($billingManifest['catalog']===array_merge(
+ ['L-PREM'=>399,'L-WINBACK-199'=>199],
+ ['B-PREM'=>9900,'ADD-DSP'=>2790,'ADD-ADS'=>890,'ADD-AN'=>690],
+ \Iluma\Gateway\BroadcasterBoost::PRICE,['ADV-BUDGET'=>100]),
+ 'Production catalog matches approved Listener, Broadcaster, Boost and Agency prices');
 $contract=\Iluma\Gateway\SavedCards::contractId();
 check((bool)preg_match('/^ILC[A-F0-9]{15}$/D',$contract),'No PAN data; contract ID is safe and unique shaped');
 $first=NexiClient::oneClickRecurrence('CONTRACT_CREATION',$contract);

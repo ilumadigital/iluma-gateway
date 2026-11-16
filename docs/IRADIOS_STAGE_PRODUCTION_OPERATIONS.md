@@ -24,8 +24,11 @@ Gateway while APP_ENV remains staging in its isolated VPS.
    IRADIOS_STAGE_PRODUCTION_WEBHOOK=https://stage.iradios.gr/api/gateway/webhook
    ```
    Keep IRADIOS_PRODUCTION_WEBHOOK untouched for unrelated/old payments.
-7. Deploy Gateway manually from Git via Hostinger hPanel. Verify production
-   Nexi provider and the signed worker/outbox end to end before live charges.
+7. Deploy Gateway on the VPS using deploy/vps/deploy-code.sh; hPanel Git
+   deployment is retired for this installation. Follow
+   docs/PRODUCTION_BILLING_RECOVERY.md for the production audit, verified backup,
+   migration, signed application preflight and separate no-charge worker.
+   Verify the production provider and signed outbox before live charges.
 
 ## Transaction safety and reversibility
 

@@ -79,7 +79,13 @@ final class Payments {
    if($winbackExpiredAt!==null)
     Winback::preflight($db,$application,$cid,$winbackExpiredAt);
    $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
-   Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,qa_credential_id,qa_run_key,status) VALUES(?,?,?,?,?,?,?,?,?,?,'pending')",[$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount,$qa['credential_id']??null,$qa['run_key']??null]);
+   if($env==='production'){
+    // Only the production tenant receives the opt-in QA migration.
+    Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,qa_credential_id,qa_run_key,status) VALUES(?,?,?,?,?,?,?,?,?,?,'pending')",[$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount,$qa['credential_id']??null,$qa['run_key']??null]);
+   }else{
+    // The existing staging tenant/schema is deliberately unchanged.
+    Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status) VALUES(?,?,?,?,?,?,?,?,'pending')",[$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount]);
+   }
    if($adScope!==null)
     AdvertisingBudget::record($db,$application,$cid,$pid,$adScope);
    if($choice['save']||$choice['reuse'])

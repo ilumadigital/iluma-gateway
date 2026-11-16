@@ -15,9 +15,10 @@ final class BroadcasterStagingBootstrap {
  private static bool $ready=false;
 
  public static function permitted(array $credential):bool {
+  if(($credential['slug']??null)!=='iradiosgr'||(int)($credential['application_id']??0)<=0)return false;
+  if(($credential['environment']??null)==='production')
+   return Config::stageProductionAllowed();
   return ($credential['environment']??null)==='staging'
-   &&($credential['slug']??null)==='iradiosgr'
-   &&(int)($credential['application_id']??0)>0
    &&in_array(Config::get('APP_ENV'),['development','staging'],true)
    &&Config::get('PRODUCTION_ENABLED')!=='1';
  }
@@ -82,8 +83,14 @@ final class BroadcasterStagingBootstrap {
  public static function ensure(array $credential):void {
   if(!self::permitted($credential))throw new HttpError(403,'BROADCASTER_STAGING_ONLY');
   if(!self::isolated())throw new HttpError(503,'BROADCASTER_STAGING_DATABASE_NOT_ISOLATED');
-  if(self::$ready)return;
   $app=(int)$credential['application_id'];
+  if($credential['environment']==='production'){
+   // Live product catalog and tables must be manually audited first.
+   if(!self::ready(Db::get('production'),$app))
+    throw new HttpError(503,'BROADCASTER_PRODUCTION_SCHEMA_OR_CATALOG_NOT_READY');
+   return;
+  }
+  if(self::$ready)return;
   try {
    $db=Db::get('staging');
    if(self::ready($db,$app)){self::$ready=true;return;}

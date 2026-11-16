@@ -46,7 +46,7 @@ final class Worker {
      WHERE e.status='pending' AND e.next_attempt_at<=UTC_TIMESTAMP()".
      ($paymentId!==null?' AND e.payment_id=?':'')
    :"SELECT * FROM outgoing_events WHERE status='pending' AND next_attempt_at<=UTC_TIMESTAMP()".$extra;
-  $records=Db::all($db,$sql." ORDER BY created_at LIMIT ".max(1,min($limit,100)),$params);
+  $records=Db::all($db,$sql.($env==='production'?" ORDER BY e.created_at LIMIT ":" ORDER BY created_at LIMIT ").max(1,min($limit,100)),$params);
   foreach($records as $event){
    // Atomic claim for multi-worker execution.
    if(!Db::exec($db,"UPDATE outgoing_events SET status='sending',next_attempt_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 2 MINUTE) WHERE id=? AND status='pending'",[$event['id']]))continue;

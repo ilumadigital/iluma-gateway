@@ -15,8 +15,9 @@ final class BroadcasterMandates {
   return isset(self::PRICE[$sku])&&($amount===self::PRICE[$sku]||$amount===self::LEGACY_PRICE[$sku]);
  }
  private static function isStaging(array $credential):bool {
-  return $credential['environment']==='staging'&&($credential['slug']??'')==='iradiosgr'
-   &&Config::get('APP_ENV')!=='production';
+  return ($credential['slug']??'')==='iradiosgr' && (
+   ($credential['environment']==='staging'&&Config::get('APP_ENV')!=='production')||
+   ($credential['environment']==='production'&&Config::stageProductionAllowed()));
  }
  public static function resource(string $sku,mixed $value):?string {
   if(!array_key_exists($sku,self::PRICE))throw new HttpError(422,'BROADCASTER_SKU_INVALID');
@@ -30,8 +31,9 @@ final class BroadcasterMandates {
  }
  public static function choice(array $body,string $env,string $sku,string $slug,int $price):?string {
   if(!array_key_exists($sku,self::PRICE))return null;
-  if($env!=='staging'||$slug!=='iradiosgr'||Config::get('APP_ENV')==='production')
-   throw new HttpError(403,'BROADCASTER_STAGING_ONLY');
+  if($slug!=='iradiosgr'||!(($env==='staging'&&Config::get('APP_ENV')!=='production')||
+    ($env==='production'&&Config::stageProductionAllowed())))
+   throw new HttpError(403,'BROADCASTER_ENVIRONMENT_NOT_ALLOWED');
   if($price!==self::PRICE[$sku])throw new HttpError(422,'BROADCASTER_PRICE_MISMATCH');
   if(($body['auto_renew']??null)!==true||
     ($body['recurring_consent_version']??null)!==self::CONSENT)
@@ -74,7 +76,7 @@ final class BroadcasterMandates {
     !is_string($sku)||!array_key_exists($sku,self::PRICE))
    throw new HttpError(422,'BROADCASTER_TARGET_INVALID');
   $resource=self::resource($sku,$body['resource_id']??null);
-  return [Db::get('staging'),(int)$credential['application_id'],$external,$sku,$resource];
+  return [Db::get($credential['environment']),(int)$credential['application_id'],$external,$sku,$resource];
  }
  public static function status(array $credential,array $body):array {
   [$db,$app,$external,$sku,$resource]=self::target($credential,$body);

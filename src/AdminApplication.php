@@ -48,7 +48,7 @@ final class AdminPageView {
   if($selectedPage==='payment')$selectedPage='payments';
   if($selectedPage==='subscription')$selectedPage='subscriptions';
   $nav='<div class="side-heading">WORKSPACE</div>';
-  foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','products'=>'Products','test-center'=>'Test Center','system'=>'System Health','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','settings'=>'Ρυθμίσεις'] as $slug=>$label){
+  foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','products'=>'Products','webhooks'=>'Webhooks','refunds'=>'Επιστροφές','test-center'=>'Test Center','system'=>'System Health','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','settings'=>'Ρυθμίσεις'] as $slug=>$label){
    $current=$selectedPage===$slug?' aria-current="page"':'';
    $nav.='<a href="/ilm-admin/?p='.$slug.'"'.$current.'>'.html($label).'</a>';
   }
@@ -170,6 +170,13 @@ try {
     }
    }
    audit('admin_'.$action,$env);
+  } elseif($action==='webhook-retry'){
+   $env=credentialEnv();
+   requireStepUp($reg,(string)($_POST['otp']??''));
+   $eventId=(string)($_POST['event_id']??'');
+   $notice=\Iluma\Gateway\AdminMonitoring::retry($env,$eventId);
+   audit('webhook_retry',$env.':'.$eventId);
+   $_GET['p']='webhooks';
   } elseif($action==='route-save'){
    $env=credentialEnv();
    requireStepUp($reg,(string)($_POST['otp']??''));
@@ -338,6 +345,10 @@ try {
   $content.=\Iluma\Gateway\AdminManagement::product($reg,$env,$csrf,(int)($_GET['application_id']??0),(string)($_GET['sku']??''));
  } elseif($p==='system'){
   $content.=\Iluma\Gateway\AdminManagement::system($env);
+ } elseif($p==='webhooks'){
+  $content.=\Iluma\Gateway\AdminMonitoring::webhooks($env,$reg,$csrf);
+ } elseif($p==='refunds'){
+  $content.=\Iluma\Gateway\AdminMonitoring::refunds($env);
  } elseif($p==='test-center'){
   $content.=\Iluma\Gateway\AdminTestCenter::view($env,$reg,$csrf,(string)($_GET['order']??''));
  } elseif($p==='keys'){
@@ -360,7 +371,7 @@ try {
  } elseif($p==='settings'){
   $content.='<p>Κάθε νέα σύνδεση απαιτεί email, password, Cloudflare Turnstile και 6ψήφιο Google Authenticator. Οι ευαίσθητες ενέργειες απαιτούν επιπλέον επιβεβαίωση MFA.</p><p>Live transactions: '.(Config::liveAllowed()?'Ενεργοποίηση από runtime — απαιτείται ανεξάρτητος έλεγχος.':'ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΕΣ').'</p>';
  } else throw new HttpError(404,'Not found');
- AdminPageView::render(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','application'=>'Διαχείριση Εφαρμογής','products'=>'Products','product'=>'Προϊόν','test-center'=>'Test Center','system'=>'System Health','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','payment'=>'Ανάλυση πληρωμής','subscription'=>'Ανάλυση Nexi MIT συνδρομής','settings'=>'Ρυθμίσεις'][$p]??'ILUMA',$content,$error,$notice);
+ AdminPageView::render(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','application'=>'Διαχείριση Εφαρμογής','products'=>'Products','product'=>'Προϊόν','webhooks'=>'Webhooks','refunds'=>'Επιστροφές','test-center'=>'Test Center','system'=>'System Health','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','payment'=>'Ανάλυση πληρωμής','subscription'=>'Ανάλυση Nexi MIT συνδρομής','settings'=>'Ρυθμίσεις'][$p]??'ILUMA',$content,$error,$notice);
 } catch(\Throwable $e){
  http_response_code($e instanceof HttpError ? $e->status : 503);
  error_log('ILUMA admin '.get_class($e).': '.$e->getMessage());

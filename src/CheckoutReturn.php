@@ -23,6 +23,8 @@ final class CheckoutReturn {
    (str_starts_with((string)$sku,'BOOST-')?'/backoffice/boost':
     (in_array($sku,['B-PREM','ADD-DSP','ADD-AN','ADD-ADS'],true)
      ?'/backoffice/pro-features':'/premium'));
-  return $origin.$route.'?gateway_return='.$kind.'&order='.$orderId;
+  // QA must not be mistaken for a normal Sandbox billing return on /premium.
+  $returnParam=$productionQa?'production_qa_return':'gateway_return';
+  return $origin.$route.'?'.$returnParam.'='.$kind.'&order='.$orderId;
  }
 }

@@ -297,7 +297,7 @@ final class RecurringMandates {
    catch(\Throwable $e){error_log('MIT mandate verification deferred');}
  }
  public static function pendingDeactivation(string $env,int $limit=10):void {
-  if($env!=='staging')return;
+  if(!in_array($env,['staging','production'],true))return;
   if(!self::schemaReady(Db::get($env)))return;
   $rows=Db::all(Db::get($env),"SELECT id,contract_id FROM recurring_mandates
    WHERE status='cancelled' AND deactivated_at IS NULL

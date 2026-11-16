@@ -104,8 +104,11 @@ final class NexiClient {
   */
  public function startMit(string $orderId,string $providerCustomerId,
    string $contractId,int $amountCents):array {
-  if($this->environment!=='staging'||Config::get('MIT_SANDBOX_EXECUTION_ENABLED')!=='1'||
-     Config::get('MIT_SANDBOX_UAT_APPROVED')!=='1')
+  if(!(($this->environment==='staging'&&Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
+        Config::get('MIT_SANDBOX_UAT_APPROVED')==='1')||
+       ($this->environment==='production'&&Config::stageProductionAllowed()&&
+        Config::get('MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&
+        Config::get('MIT_PRODUCTION_UAT_APPROVED')==='1')))
    throw new \RuntimeException('MIT sandbox execution is locked');
   if(!preg_match('/^IL[A-F0-9]{24}$/D',$orderId)||
      !preg_match('/^ILM(?:[A-F0-9]{15}|[A-F0-9]{24})$/D',$contractId)||
@@ -126,10 +129,12 @@ final class NexiClient {
   */
  public function startBroadcasterMit(string $orderId,string $customerId,
    string $contractId,int $amountCents):array {
-  if($this->environment!=='staging'||
-    Config::get('APP_ENV')==='production'||
-    Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')!=='1'||
-    Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')!=='1')
+  if(!(($this->environment==='staging'&&Config::get('APP_ENV')!=='production'&&
+      Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
+      Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1')||
+     ($this->environment==='production'&&Config::stageProductionAllowed()&&
+      Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&
+      Config::get('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED')==='1')))
    throw new \RuntimeException('Broadcaster MIT execution locked');
   if(!preg_match('/^IL[A-F0-9]{24}$/D',$orderId)||
      !preg_match('/^ILM(?:[A-F0-9]{15}|[A-F0-9]{24})$/D',$contractId)||

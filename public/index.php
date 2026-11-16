@@ -51,7 +51,7 @@ try {
    if($state==='paid')Worker::deliverPayment($foundEnv,$foundPaymentId);
   }catch(\Throwable $e){error_log('Gateway hosted return reconciliation or delivery deferred');}
   $app=Db::one(Db::get('registry'),'SELECT slug FROM applications WHERE id=?',[$foundAppId]);
-  header('Location: '.\Iluma\Gateway\CheckoutReturn::url($foundEnv,$path,$order,$foundSku,$foundStageRoute,(string)($app['slug']??'')),true,303);
+  header('Location: '.\Iluma\Gateway\CheckoutReturn::url($foundEnv,$path,$order,$foundSku,$foundStageRoute,(string)($app['slug']??''),(int)$foundAppId),true,303);
   exit;
  }
  if(str_starts_with($path,'/api/v1/')){

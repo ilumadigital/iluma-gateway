@@ -17,5 +17,14 @@ final class Config {
   if(!str_starts_with($v,$expected)) throw new \RuntimeException('Untrusted webhook destination');
   return $v;
  }
+ public static function stageProductionAllowed():bool {
+  return self::liveAllowed() && self::get('IRADIOS_STAGE_PRODUCTION_ENABLED')==='1';
+ }
+ public static function stagePaymentWebhook():string {
+  $expected='https://stage.iradios.gr/api/gateway/webhook';
+  if(self::must('IRADIOS_STAGE_PRODUCTION_WEBHOOK')!==$expected)
+   throw new \RuntimeException('Stage production webhook destination mismatch');
+  return $expected;
+ }
  public static function liveAllowed(): bool { return self::get('PRODUCTION_ENABLED')==='1' && self::get('APP_ENV')==='production'; }
 }

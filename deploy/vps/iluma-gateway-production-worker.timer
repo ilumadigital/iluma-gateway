@@ -1,0 +1,9 @@
+[Unit]
+Description=ILUMA Gateway production payment reconciliation and webhook worker
+[Timer]
+OnCalendar=*-*-* *:*:30
+AccuracySec=1s
+Persistent=false
+Unit=iluma-gateway-production-worker.service
+[Install]
+WantedBy=timers.target

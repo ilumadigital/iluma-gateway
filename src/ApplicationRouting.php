@@ -83,6 +83,15 @@ final class ApplicationRouting {
   if($slug==='iradiosgr'||$slug===AdminTestCenter::SLUG)return;
   $env=(string)($credential['environment']??'');
   $id=(int)($credential['application_id']??0);
+  if($env==='production'){
+   // The worker uses these columns to deliver every production payment.
+   // Reject new checkouts before Nexi POST if production migration is absent.
+   $columns=Db::one(Db::get('production'),"SELECT COUNT(*) AS n FROM information_schema.columns
+    WHERE table_schema=DATABASE() AND table_name='payments'
+      AND column_name IN ('iradios_stage_routed','origin_credential_id')");
+   if((int)($columns['n']??0)!==2)
+    throw new HttpError(503,'PRODUCTION_PAYMENT_ROUTE_SCHEMA_NOT_READY');
+  }
   $route=self::read($env,$id);
   if(!$route['enabled']||$route['webhook_url']===''||$route['return_path']==='')
    throw new HttpError(503,'APPLICATION_PAYMENT_ROUTING_NOT_CONFIGURED');

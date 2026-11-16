@@ -725,6 +725,9 @@ foreach($oldQaEnv as $name=>$value){
 $qaMigration=file_get_contents(dirname(__DIR__).'/database/migrations/20261116_production_payment_qa.sql');
 $qaWorker=file_get_contents(dirname(__DIR__).'/src/Worker.php');
 $qaPayments=file_get_contents(dirname(__DIR__).'/src/Payments.php');
+check(str_contains($qaPayments,'AND qa_credential_id=?') &&
+ str_contains($qaPayments,'ProductionQa::isCredential($credential)'),
+ 'Dedicated QA production key cannot read another application customer payment via GET');
 check(str_contains($qaMigration,'ADD UNIQUE KEY uq_production_qa_run_key') &&
  str_contains($qaPayments,'qa_credential_id') && str_contains($qaWorker,'ProductionQa::webhook()'),
  'Gateway stores QA identity, prevents a second production charge and routes signed outbox by payment');

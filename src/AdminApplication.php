@@ -48,7 +48,7 @@ final class AdminPageView {
   if($selectedPage==='payment')$selectedPage='payments';
   if($selectedPage==='subscription')$selectedPage='subscriptions';
   $nav='<div class="side-heading">WORKSPACE</div>';
-  foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','products'=>'Products','system'=>'System Health','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','settings'=>'Ρυθμίσεις'] as $slug=>$label){
+  foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','products'=>'Products','test-center'=>'Test Center','system'=>'System Health','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','settings'=>'Ρυθμίσεις'] as $slug=>$label){
    $current=$selectedPage===$slug?' aria-current="page"':'';
    $nav.='<a href="/ilm-admin/?p='.$slug.'"'.$current.'>'.html($label).'</a>';
   }
@@ -151,7 +151,26 @@ try {
   } elseif($action==='logout'){if(!empty($_SESSION['admin_id']))audit('logout','backoffice');$_SESSION=[];session_destroy();header('Location: /ilm-admin/');exit;}
   elseif(empty($_SESSION['admin_id']))throw new HttpError(403,'Not authenticated');
   elseif($action==='environment'){if(!in_array($_POST['environment']??'', ['staging','production'],true))throw new HttpError(422,'Invalid environment');$_SESSION['view_env']=$_POST['environment'];header('Location: /ilm-admin/');exit;}
-  elseif(in_array($action,['application-create','application-update','product-save'],true)){
+  elseif(in_array($action,['test-prepare','test-start','test-new'],true)){
+   $env=credentialEnv();
+   requireStepUp($reg,(string)($_POST['otp']??''));
+   $_GET['p']='test-center';
+   if($action==='test-prepare'){
+    $notice=\Iluma\Gateway\AdminTestCenter::prepare($env,$reg);
+   } elseif($action==='test-new'){
+    \Iluma\Gateway\AdminTestCenter::resetIntent();
+    $notice='Δημιουργήθηκε νέο μοναδικό test intent. Δεν έγινε πληρωμή.';
+   } else {
+    $result=\Iluma\Gateway\AdminTestCenter::start($env,$reg,(int)$_SESSION['admin_id'],$_POST);
+    $notice='Order ID: '.(string)$result['order_id'].' · Κατάσταση: '.(string)$result['status'];
+    if($result['status']==='redirect' && !empty($result['checkout_url'])){
+     $reveal='<article><h2>Το checkout 1€ δημιουργήθηκε</h2><p>Order: '.html($result['order_id']).'</p><p><a target="_blank" rel="noopener noreferrer" href="'.html((string)$result['checkout_url']).'">Άνοιγμα ασφαλούς Nexi Checkout</a></p><p>Επιβεβαίωσε την πληρωμή στο Nexi Merchant Portal με το Order ID.</p></article>';
+    } else {
+     $error='Δεν υπάρχει επιβεβαιωμένο checkout. Έλεγξε την ίδια συναλλαγή, μην ξεκινήσεις νέα χωρίς συμφωνία.';
+    }
+   }
+   audit('admin_'.$action,$env);
+  } elseif(in_array($action,['application-create','application-update','product-save'],true)){
    $env=credentialEnv();
    requireStepUp($reg,(string)($_POST['otp']??''));
    $notice=\Iluma\Gateway\AdminManagement::handle($action,$reg,$env,$_POST);
@@ -306,6 +325,8 @@ try {
   $content.=\Iluma\Gateway\AdminManagement::product($reg,$env,$csrf,(int)($_GET['application_id']??0),(string)($_GET['sku']??''));
  } elseif($p==='system'){
   $content.=\Iluma\Gateway\AdminManagement::system($env);
+ } elseif($p==='test-center'){
+  $content.=\Iluma\Gateway\AdminTestCenter::view($env,$reg,$csrf,(string)($_GET['order']??''));
  } elseif($p==='keys'){
   $keys=Db::all($reg,'SELECT c.id,c.key_prefix,c.created_at,c.last_used_at,c.enabled,a.name
    FROM application_credentials c JOIN applications a ON a.id=c.application_id
@@ -326,7 +347,7 @@ try {
  } elseif($p==='settings'){
   $content.='<p>Κάθε νέα σύνδεση απαιτεί email, password, Cloudflare Turnstile και 6ψήφιο Google Authenticator. Οι ευαίσθητες ενέργειες απαιτούν επιπλέον επιβεβαίωση MFA.</p><p>Live transactions: '.(Config::liveAllowed()?'Ενεργοποίηση από runtime — απαιτείται ανεξάρτητος έλεγχος.':'ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΕΣ').'</p>';
  } else throw new HttpError(404,'Not found');
- AdminPageView::render(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','application'=>'Διαχείριση Εφαρμογής','products'=>'Products','product'=>'Προϊόν','system'=>'System Health','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','payment'=>'Ανάλυση πληρωμής','subscription'=>'Ανάλυση Nexi MIT συνδρομής','settings'=>'Ρυθμίσεις'][$p]??'ILUMA',$content,$error,$notice);
+ AdminPageView::render(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','application'=>'Διαχείριση Εφαρμογής','products'=>'Products','product'=>'Προϊόν','test-center'=>'Test Center','system'=>'System Health','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','payment'=>'Ανάλυση πληρωμής','subscription'=>'Ανάλυση Nexi MIT συνδρομής','settings'=>'Ρυθμίσεις'][$p]??'ILUMA',$content,$error,$notice);
 } catch(\Throwable $e){
  http_response_code($e instanceof HttpError ? $e->status : 503);
  error_log('ILUMA admin '.get_class($e).': '.$e->getMessage());

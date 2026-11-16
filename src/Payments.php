@@ -8,8 +8,13 @@ final class Payments {
  }
  public static function checkout(array $credential,array $request,string $key):array {
   $env=$credential['environment'];$db=Db::get($env);$application=(int)$credential['application_id'];
+  $toStage=$env==='production'&&($credential['slug']??'')==='iradiosgr';
+  if($toStage&&!Config::stageProductionAllowed())
+   throw new HttpError(503,'IRADIOS_STAGE_PRODUCTION_DISABLED');
   $external=(string)($request['customer_id']??'');$sku=(string)($request['product_sku']??'');
   $email=(string)($request['email']??'');$name=(string)($request['name']??'');
+  if($toStage&&!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
+   throw new HttpError(422,'IRADIOS_STAGE_CUSTOMER_SCOPE_INVALID');
   // The new variable-price SKU is accepted ONLY from a signed staging
   // iRadios request. The caller's quote/campaign scope is validated once.
   $adScope=AdvertisingBudget::choice($request,$credential);
@@ -74,7 +79,15 @@ final class Payments {
    if($winbackExpiredAt!==null)
     Winback::preflight($db,$application,$cid,$winbackExpiredAt);
    $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
-   Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status) VALUES(?,?,?,?,?,?,?,?,'pending')",[$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount]);
+   if($toStage) {
+    // Commit routing before the irreversible Nexi call. Migration required.
+    Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status,iradios_stage_routed,origin_credential_id)
+      VALUES(?,?,?,?,?,?,?,?,'pending',1,?)",
+      [$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount,(int)$credential['id']]);
+   } else {
+    Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status) VALUES(?,?,?,?,?,?,?,?,'pending')",
+      [$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount]);
+   }
    if($adScope!==null)
     AdvertisingBudget::record($db,$application,$cid,$pid,$adScope);
    if($choice['save']||$choice['reuse'])
@@ -194,10 +207,10 @@ final class Payments {
   }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
  }
  public static function history(array $credential,string $external):array {
-  if($credential['environment']!=='staging'||($credential['slug']??'')!=='iradiosgr'||
+  if(!in_array($credential['environment'],['staging','production'],true)||($credential['slug']??'')!=='iradiosgr'||
      !preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
    throw new HttpError(403,'STAGING_ONLY');
-  $db=Db::get('staging');
+  $db=Db::get($credential['environment']);
   $rows=Db::all($db,"SELECT p.id AS payment_id,p.order_id,p.status,p.amount_cents,p.currency,
     p.created_at,p.confirmed_at,pr.sku,pr.title
     FROM payments p JOIN customers c ON c.id=p.customer_id
@@ -252,7 +265,8 @@ final class Payments {
       Db::exec($db,"UPDATE billing_cycles SET state=? WHERE id=? AND state='pending'",[$status,$locked['billing_cycle_id']]);
      }
     }
-    if($env==='staging'){
+    $stageLinked=$env==='staging'||($env==='production'&&!empty($locked['iradios_stage_routed']));
+    if($stageLinked){
      if($status==='paid')Winback::captured($db,$p['id']);
      // A provider-confirmed declined/cancelled *initial* HPP must not
      // permanently lock the listener out of a new consent or winback retry.
@@ -272,7 +286,7 @@ final class Payments {
     // immutable provider payment before sending a signed iRadios event.
     // The migration is optional until staged rollout; old payments remain safe.
     $mitCycle=false;
-    if($env==='staging'){
+    if($stageLinked){
      $schema=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
        WHERE table_schema=DATABASE() AND table_name='recurring_cycles'");
      if((int)($schema['n']??0)===1){
@@ -284,8 +298,8 @@ final class Payments {
       if($mitCycle)RecurringMandates::settleCycle($db,$p['id'],$status);
      }
     }
-    $bScope=$env==='staging'?BroadcasterMandates::eventScope($db,$p['id']):null;
-    if(!$bScope && $env==='staging')$bScope=BroadcasterBoost::eventScope($db,$p['id']);
+    $bScope=$stageLinked?BroadcasterMandates::eventScope($db,$p['id']):null;
+    if(!$bScope && $stageLinked)$bScope=BroadcasterBoost::eventScope($db,$p['id']);
     if($bScope&&($bScope['billing_origin']??'')==='automatic_renewal')
       BroadcasterMandates::settleCycle($db,$p['id'],$status);
     self::log($db,$p['id'],$status,$status==='paid'?'Η Nexi επιβεβαίωσε επιτυχημένη πληρωμή.':($status==='failed'?'Η Nexi απέρριψε την πληρωμή.':'Η συναλλαγή ακυρώθηκε.'));
@@ -295,7 +309,7 @@ final class Payments {
     $eventId=Security::id();$body=['event_id'=>$eventId,'event_type'=>'payment.'.$status,'payment_id'=>$p['id'],'order_id'=>$order,'customer_id'=>$p['customer_id'],'amount_cents'=>(int)$p['amount_cents'],'currency'=>'EUR',
       'product_sku'=>$product['sku']??'',
       'environment'=>$env,'occurred_at'=>gmdate('c')];
-    if($env==='staging'&&($product['sku']??null)===AdvertisingBudget::SKU){
+    if($stageLinked&&($product['sku']??null)===AdvertisingBudget::SKU){
       $advertising=AdvertisingBudget::eventScope($db,$p['id']);
       if($advertising===null)throw new \RuntimeException('Advertising payment scope missing');
       $body=array_merge($body,$advertising);

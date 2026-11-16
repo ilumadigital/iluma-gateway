@@ -211,13 +211,22 @@ final class BroadcasterMandates {
   }
  }
  public static function chargeDue(string $env,int $limit=5):void {
-  if($env!=='staging'||Config::get('APP_ENV')==='production'
-   ||Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')!=='1'
-   ||Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')!=='1')return;
-  $db=Db::get('staging');if(!self::schemaReady($db))return;
-  $rows=Db::all($db,"SELECT id FROM broadcaster_mandates
-   WHERE status='active' AND verified_at IS NOT NULL AND cancelled_at IS NULL
-    AND next_due_at<=UTC_TIMESTAMP() ORDER BY next_due_at LIMIT ".max(1,min(5,$limit)));
+  $enabled=($env==='staging'&&Config::get('APP_ENV')!=='production'&&
+    Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
+    Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1')||
+   ($env==='production'&&Config::stageProductionAllowed()&&
+    Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&
+    Config::get('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED')==='1');
+  if(!$enabled)return;
+  $db=Db::get($env);if(!self::schemaReady($db))return;
+  $rows=Db::all($db,$env==='production'
+   ?"SELECT m.id FROM broadcaster_mandates m JOIN payments p ON p.id=m.initial_payment_id
+     WHERE p.iradios_stage_routed=1 AND m.status='active' AND m.verified_at IS NOT NULL
+       AND m.cancelled_at IS NULL AND m.next_due_at<=UTC_TIMESTAMP()
+     ORDER BY m.next_due_at LIMIT ".max(1,min(5,$limit))
+   :"SELECT id FROM broadcaster_mandates
+     WHERE status='active' AND verified_at IS NOT NULL AND cancelled_at IS NULL
+       AND next_due_at<=UTC_TIMESTAMP() ORDER BY next_due_at LIMIT ".max(1,min(5,$limit)));
   foreach($rows as $row){
    $db->beginTransaction();$payment=null;
    try{
@@ -244,10 +253,22 @@ final class BroadcasterMandates {
     $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
     $request='bmit-'.$m['id'].'-'.gmdate('YmdHis',strtotime($m['next_due_at'].' UTC'));
     $hash=hash('sha256',Security::json([$m['id'],$m['next_due_at'],$m['amount_cents'],'EUR']));
-    Db::exec($db,"INSERT INTO payments
-     (id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,currency,status)
-     VALUES(?,?,?,?,?,?,?,?,'EUR','pending')",
-     [$pid,$m['application_id'],$m['customer_id'],$product['id'],$order,$request,$hash,$m['amount_cents']]);
+    if($env==='production'){
+     $origin=Db::one($db,'SELECT iradios_stage_routed,origin_credential_id FROM payments WHERE id=?',
+       [$m['initial_payment_id']]);
+     if(!$origin||empty($origin['iradios_stage_routed'])||empty($origin['origin_credential_id']))
+      throw new \RuntimeException('Production broadcaster MIT origin credential missing');
+     Db::exec($db,"INSERT INTO payments
+      (id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,currency,status,iradios_stage_routed,origin_credential_id)
+      VALUES(?,?,?,?,?,?,?,?,'EUR','pending',1,?)",
+      [$pid,$m['application_id'],$m['customer_id'],$product['id'],$order,$request,$hash,
+       $m['amount_cents'],(int)$origin['origin_credential_id']]);
+    }else{
+     Db::exec($db,"INSERT INTO payments
+      (id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,currency,status)
+      VALUES(?,?,?,?,?,?,?,?,'EUR','pending')",
+      [$pid,$m['application_id'],$m['customer_id'],$product['id'],$order,$request,$hash,$m['amount_cents']]);
+    }
     Db::exec($db,"INSERT INTO broadcaster_cycles
      (id,mandate_id,cycle_due_at,payment_id,status)
      VALUES(?,?,?,?, 'pending')",[Security::id(),$m['id'],$m['next_due_at'],$pid]);
@@ -280,7 +301,7 @@ final class BroadcasterMandates {
     }
     $db->commit();
    }catch(\Throwable $e){if($db->inTransaction())$db->rollBack();error_log('Broadcaster MIT requires reconciliation');}
-   try{Payments::reconcile('staging',$payment['order']);}
+   try{Payments::reconcile($env,$payment['order']);}
    catch(\Throwable $e){error_log('Broadcaster MIT reconciliation pending');}
   }
  }

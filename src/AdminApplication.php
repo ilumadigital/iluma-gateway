@@ -48,7 +48,7 @@ final class AdminPageView {
   if($selectedPage==='payment')$selectedPage='payments';
   if($selectedPage==='subscription')$selectedPage='subscriptions';
   $nav='<div class="side-heading">WORKSPACE</div>';
-  foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','settings'=>'Ρυθμίσεις'] as $slug=>$label){
+  foreach(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','products'=>'Products','system'=>'System Health','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','settings'=>'Ρυθμίσεις'] as $slug=>$label){
    $current=$selectedPage===$slug?' aria-current="page"':'';
    $nav.='<a href="/ilm-admin/?p='.$slug.'"'.$current.'>'.html($label).'</a>';
   }
@@ -151,7 +151,12 @@ try {
   } elseif($action==='logout'){if(!empty($_SESSION['admin_id']))audit('logout','backoffice');$_SESSION=[];session_destroy();header('Location: /ilm-admin/');exit;}
   elseif(empty($_SESSION['admin_id']))throw new HttpError(403,'Not authenticated');
   elseif($action==='environment'){if(!in_array($_POST['environment']??'', ['staging','production'],true))throw new HttpError(422,'Invalid environment');$_SESSION['view_env']=$_POST['environment'];header('Location: /ilm-admin/');exit;}
-  elseif($action==='nexi-save'){
+  elseif(in_array($action,['application-create','application-update','product-save'],true)){
+   $env=credentialEnv();
+   requireStepUp($reg,(string)($_POST['otp']??''));
+   $notice=\Iluma\Gateway\AdminManagement::handle($action,$reg,$env,$_POST);
+   audit('management_'.$action,$env.':'.(string)($_POST['application_id']??'new'));
+  } elseif($action==='nexi-save'){
    $env=credentialEnv();$value=(string)($_POST['secret']??'');$otp=(string)($_POST['otp']??'');
    $u=Db::one($reg,'SELECT totp_secret_box FROM admin_users WHERE id=?',[$_SESSION['admin_id']]);
    requireStepUp($reg,$otp);
@@ -166,7 +171,10 @@ try {
    $env=credentialEnv();$otp=(string)($_POST['otp']??'');
    $u=Db::one($reg,'SELECT totp_secret_box FROM admin_users WHERE id=?',[$_SESSION['admin_id']]);
    requireStepUp($reg,$otp);
-   $a=Db::one($reg,"SELECT id FROM applications WHERE slug='iradiosgr'");$key='ilg_'.Security::id(24);$secret=Security::id(32);
+   $appId=(int)($_POST['application_id']??0);
+   $a=Db::one($reg,"SELECT id FROM applications WHERE id=? AND enabled=1 AND slug<>'iluma-internal'",[$appId]);
+   if(!$a)throw new HttpError(422,'Επίλεξε ενεργή εφαρμογή.');
+   $key='ilg_'.Security::id(24);$secret=Security::id(32);
    Db::exec($reg,'INSERT INTO application_credentials(application_id,environment,key_hash,key_prefix,secret_box) VALUES(?,?,?,?,?)',[$a['id'],$env,hash('sha256',$key),substr($key,0,18),Security::encrypt($secret)]);
    audit('api_key_create',$env);$reveal='<div class="secret"><strong>Εμφάνιση ΜΟΝΟ ΜΙΑ ΦΟΡΑ</strong><pre>'.html('KEY: '.$key."\nSECRET: ".$secret).'</pre></div>';
   } elseif($action==='key-disable'){
@@ -289,13 +297,27 @@ try {
    ?\Iluma\Gateway\BroadcasterRecurringAdmin::detail($db,$reg,$subscriptionId)
    :\Iluma\Gateway\RecurringAdmin::detail($db,$reg,$subscriptionId);
  } elseif($p==='applications'){
-  $apps=Db::all($reg,'SELECT * FROM applications');foreach($apps as $app)$content.='<article><h2>'.html($app['name']).'</h2><p>Staging: '.html($app['staging_origin']).'</p><p>Production: '.html($app['production_origin']).'</p></article>';
+  $content.=\Iluma\Gateway\AdminManagement::applications($reg,$csrf);
+ } elseif($p==='application'){
+  $content.=\Iluma\Gateway\AdminManagement::application($reg,$csrf,(int)($_GET['id']??0));
+ } elseif($p==='products'){
+  $content.=\Iluma\Gateway\AdminManagement::products($reg,$env,$csrf,(int)($_GET['application_id']??0));
+ } elseif($p==='product'){
+  $content.=\Iluma\Gateway\AdminManagement::product($reg,$env,$csrf,(int)($_GET['application_id']??0),(string)($_GET['sku']??''));
+ } elseif($p==='system'){
+  $content.=\Iluma\Gateway\AdminManagement::system($env);
  } elseif($p==='keys'){
-  $keys=Db::all($reg,'SELECT id,key_prefix,created_at,last_used_at,enabled FROM application_credentials WHERE environment=? ORDER BY id DESC',[$env]);
-  $content.='<form method="post" data-stepup="Δημιουργία API Key"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="key-create"><p>Νέο API key για iRadiosGR / '.html($env).'</p><input type="hidden" name="otp" value=""><button>Δημιουργία κλειδιού</button></form>';
-  $content.='<table><tr><th>Key Prefix</th><th>Δημιουργία</th><th>Τελευταία χρήση</th><th>Ενεργό</th><th></th></tr>';
-  foreach($keys as $k)$content.='<tr><td>'.html($k['key_prefix']).'…</td><td>'.html($k['created_at']).'</td><td>'.html($k['last_used_at']??'—').'</td><td>'.($k['enabled']?'Ναι':'Όχι').'</td><td><form method="post" data-stepup="Απενεργοποίηση API Key"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="id" value="'.(int)$k['id'].'"><input type="hidden" name="action" value="key-disable"><input type="hidden" name="otp" value=""><button class="danger-button" type="submit">Απενεργοποίηση</button></form></td></tr>';
-  $content.='</table>';
+  $keys=Db::all($reg,'SELECT c.id,c.key_prefix,c.created_at,c.last_used_at,c.enabled,a.name
+   FROM application_credentials c JOIN applications a ON a.id=c.application_id
+   WHERE c.environment=? ORDER BY c.id DESC',[$env]);
+  $apps=Db::all($reg,"SELECT id,name FROM applications WHERE enabled=1 AND slug<>'iluma-internal' ORDER BY name");
+  $selected=(int)($_GET['application_id']??0);
+  $content.='<form method="post" data-stepup="Δημιουργία API Key"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="key-create"><label>Εφαρμογή<select name="application_id" required>';
+  foreach($apps as $a)$content.='<option value="'.(int)$a['id'].'"'.($selected===(int)$a['id']?' selected':'').'>'.html($a['name']).'</option>';
+  $content.='</select></label><p>Νέο API key / '.html(strtoupper($env)).'</p><input type="hidden" name="otp" value=""><button>Δημιουργία κλειδιού</button></form>';
+  $content.='<div class="dashboard-table-scroll"><table><tr><th>Εφαρμογή</th><th>Key Prefix</th><th>Δημιουργία</th><th>Τελευταία χρήση</th><th>Ενεργό</th><th></th></tr>';
+  foreach($keys as $k)$content.='<tr><td>'.html($k['name']).'</td><td>'.html($k['key_prefix']).'…</td><td>'.html(localDate($k['created_at'])).'</td><td>'.html(localDate($k['last_used_at'])).'</td><td>'.($k['enabled']?'Ναι':'Όχι').'</td><td><form method="post" data-stepup="Απενεργοποίηση API Key"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="id" value="'.(int)$k['id'].'"><input type="hidden" name="action" value="key-disable"><input type="hidden" name="otp" value=""><button class="danger-button" type="submit">Απενεργοποίηση</button></form></td></tr>';
+  $content.='</table></div>';
  } elseif($p==='nexi'){
   $row=Db::one($reg,'SELECT * FROM nexi_credentials WHERE environment=?',[$env]);$masked=$row?'•••••••• (κρυπτογραφημένο)':'Δεν έχει οριστεί';
   $content.='<p>Endpoint: '.html(Config::base($env)).'</p><p>API key: '.html($masked).'</p><p>Last Connection: '.html($row['last_checked_at']??'—').'</p><p>Connection Status: '.html($row['check_status']??'not configured').'</p>';
@@ -304,7 +326,7 @@ try {
  } elseif($p==='settings'){
   $content.='<p>Κάθε νέα σύνδεση απαιτεί email, password, Cloudflare Turnstile και 6ψήφιο Google Authenticator. Οι ευαίσθητες ενέργειες απαιτούν επιπλέον επιβεβαίωση MFA.</p><p>Live transactions: '.(Config::liveAllowed()?'Ενεργοποίηση από runtime — απαιτείται ανεξάρτητος έλεγχος.':'ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΕΣ').'</p>';
  } else throw new HttpError(404,'Not found');
- AdminPageView::render(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','payment'=>'Ανάλυση πληρωμής','subscription'=>'Ανάλυση Nexi MIT συνδρομής','settings'=>'Ρυθμίσεις'][$p]??'ILUMA',$content,$error,$notice);
+ AdminPageView::render(['dashboard'=>'Dashboard','payments'=>'Πληρωμές','subscriptions'=>'Συνδρομές','customers'=>'Πελάτες','applications'=>'Εφαρμογές','application'=>'Διαχείριση Εφαρμογής','products'=>'Products','product'=>'Προϊόν','system'=>'System Health','keys'=>'API Keys','nexi'=>'Nexi Settings','logs'=>'Ιστορικό Πληρωμών','payment'=>'Ανάλυση πληρωμής','subscription'=>'Ανάλυση Nexi MIT συνδρομής','settings'=>'Ρυθμίσεις'][$p]??'ILUMA',$content,$error,$notice);
 } catch(\Throwable $e){
  http_response_code($e instanceof HttpError ? $e->status : 503);
  error_log('ILUMA admin '.get_class($e).': '.$e->getMessage());

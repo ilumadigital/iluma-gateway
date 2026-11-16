@@ -8,6 +8,9 @@ final class Payments {
  }
  public static function checkout(array $credential,array $request,string $key):array {
   $env=$credential['environment'];$db=Db::get($env);$application=(int)$credential['application_id'];
+  // A configured, approved HTTPS route is mandatory for third-party apps.
+  // Built-in iRadios and internal diagnostic retain their isolated paths.
+  ApplicationRouting::assertCheckout($credential);
   $toStage=$env==='production'&&($credential['slug']??'')==='iradiosgr';
   if($toStage&&!Config::stageProductionAllowed())
    throw new HttpError(503,'IRADIOS_STAGE_PRODUCTION_DISABLED');
@@ -313,6 +316,12 @@ final class Payments {
       $advertising=AdvertisingBudget::eventScope($db,$p['id']);
       if($advertising===null)throw new \RuntimeException('Advertising payment scope missing');
       $body=array_merge($body,$advertising);
+    }
+    $app=Db::one(Db::get('registry'),'SELECT slug FROM applications WHERE id=?',[(int)$p['application_id']]);
+    if(!in_array((string)($app['slug']??''),['iradiosgr',AdminTestCenter::SLUG],true)){
+     $customer=Db::one($db,'SELECT external_user_id FROM customers WHERE id=? AND application_id=?',
+      [$p['customer_id'],$p['application_id']]);
+     if($customer)$body['external_user_id']=(string)$customer['external_user_id'];
     }
     if($bScope){
       $body['resource_id']=$bScope['resource_id'];

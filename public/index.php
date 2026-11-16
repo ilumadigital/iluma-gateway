@@ -33,14 +33,14 @@ try {
   // Nexi does not need access to the iRadios session or its JWT.
   $order=(string)($_GET['order']??'');
   if(!preg_match('/^IL[A-F0-9]{24}$/D',$order))throw new HttpError(400,'Invalid order');
-  $foundEnv=null;$foundPaymentId=null;$foundSku=null;$foundStageRoute=false;
+  $foundEnv=null;$foundPaymentId=null;$foundSku=null;$foundStageRoute=false;$foundAppId=null;
   foreach(['staging','production'] as $candidate){
    if($candidate==='production'&&!Config::liveAllowed())continue;
-   $columns=$candidate==='production'?'p.id,pr.sku,p.iradios_stage_routed':'p.id,pr.sku';
+   $columns=$candidate==='production'?'p.id,p.application_id,pr.sku,p.iradios_stage_routed':'p.id,p.application_id,pr.sku';
    $found=Db::one(Db::get($candidate),
     'SELECT '.$columns.' FROM payments p JOIN products pr ON pr.id=p.product_id WHERE p.order_id=?',[$order]);
    if($found){$foundEnv=$candidate;$foundPaymentId=(string)$found['id'];$foundSku=(string)$found['sku'];
-    $foundStageRoute=!empty($found['iradios_stage_routed']);break;}
+    $foundStageRoute=!empty($found['iradios_stage_routed']);$foundAppId=(int)$found['application_id'];break;}
   }
   if($foundEnv===null)throw new HttpError(404,'Order not found');
   // Server-to-server verification only; provider return itself cannot mark paid.
@@ -50,7 +50,8 @@ try {
    // only an existing outbox event after authoritative provider reconciliation.
    if($state==='paid')Worker::deliverPayment($foundEnv,$foundPaymentId);
   }catch(\Throwable $e){error_log('Gateway hosted return reconciliation or delivery deferred');}
-  header('Location: '.\Iluma\Gateway\CheckoutReturn::url($foundEnv,$path,$order,$foundSku,$foundStageRoute),true,303);
+  $app=Db::one(Db::get('registry'),'SELECT slug FROM applications WHERE id=?',[$foundAppId]);
+  header('Location: '.\Iluma\Gateway\CheckoutReturn::url($foundEnv,$path,$order,$foundSku,$foundStageRoute,(string)($app['slug']??''),(int)$foundAppId),true,303);
   exit;
  }
  if(str_starts_with($path,'/api/v1/')){

@@ -691,4 +691,14 @@ if($oldAdvertisingFlag===false)putenv('ADVERTISING_SANDBOX_ENABLED');
 else putenv('ADVERTISING_SANDBOX_ENABLED='.$oldAdvertisingFlag);
 if($oldAppEnv===false)putenv('APP_ENV');else putenv('APP_ENV='.$oldAppEnv);
 if($oldProdFlag===false)putenv('PRODUCTION_ENABLED');else putenv('PRODUCTION_ENABLED='.$oldProdFlag);
+// Internal diagnostic return must stay on Gateway, never grant iRadios entitlements.
+$internalOrder='IL'.str_repeat('A',24);
+check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result',$internalOrder,
+  \Iluma\Gateway\AdminTestCenter::SKU,false,\Iluma\Gateway\AdminTestCenter::SLUG)
+  ==='https://gateway.iluma.gr/ilm-admin/?p=test-center&order='.$internalOrder,
+  'Internal test return remains on ILUMA admin');
+check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result',$internalOrder,
+  'L-PREM',false,'iradiosgr')==='https://play.iradios.gr/premium?gateway_return=result&order='.$internalOrder,
+  'iRadios production return remains unchanged');
+
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

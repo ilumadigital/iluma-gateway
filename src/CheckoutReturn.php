@@ -7,7 +7,7 @@ namespace Iluma\Gateway;
  * payment status; the iRadios backend verifies via signed Gateway events.
  */
 final class CheckoutReturn {
- public static function url(string $environment,string $path,string $orderId,?string $sku=null,bool $stageRouted=false,string $applicationSlug='iradiosgr'):string {
+ public static function url(string $environment,string $path,string $orderId,?string $sku=null,bool $stageRouted=false,string $applicationSlug='iradiosgr',int $applicationId=0):string {
   if(!in_array($environment,['staging','production'],true) ||
      !in_array($path,['/checkout/result','/checkout/cancel'],true) ||
      !preg_match('/^IL[A-F0-9]{24}$/D',$orderId)){
@@ -15,6 +15,8 @@ final class CheckoutReturn {
   }
   if($applicationSlug===AdminTestCenter::SLUG)
    return 'https://gateway.iluma.gr/ilm-admin/?p=test-center&order='.$orderId;
+  if($applicationSlug!=='iradiosgr')
+   return ApplicationRouting::returnUrl($environment,$applicationId,$orderId,$path==='/checkout/cancel'?'cancel':'result');
   $origin=($environment==='staging'||($environment==='production'&&$stageRouted))?'https://stage.iradios.gr':'https://play.iradios.gr';
   $kind=$path==='/checkout/cancel'?'cancel':'result';
   // The caller looks up the product from the stored Gateway order; the

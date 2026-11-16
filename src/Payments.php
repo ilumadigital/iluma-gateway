@@ -17,11 +17,15 @@ final class Payments {
   if(strlen($external)<1||strlen($external)>190||strlen($sku)<1||strlen($sku)>80||!filter_var($email,FILTER_VALIDATE_EMAIL)||strlen($email)>250||strlen($name)>250)
    throw new HttpError(422,'Customer/product validation failed');
   if(!preg_match('/^[A-Za-z0-9._:-]{1,128}$/D',$key)) throw new HttpError(422,'Idempotency-Key required');
+  // A dedicated real-card QA credential can create ONLY one signed, EUR 3.99
+  // Listener purchase. The attached id is persisted for future callback routing.
+  $qa=ProductionQa::checkoutScope($credential,$request,$key);
   // A signed staging Broadcaster request prepares only its isolated sandbox.
   if(isset(BroadcasterMandates::PRICE[$sku])||isset(BroadcasterBoost::PRICE[$sku]))
    BroadcasterStagingBootstrap::ensure($credential);
   $product=Db::one($db,'SELECT * FROM products WHERE application_id=? AND sku=? AND enabled=1',[$application,$sku]);
   if(!$product) throw new HttpError(422,'Unknown product');
+  if($qa!==null)ProductionQa::verifyProduct($product);
   $checkoutAmount=$adScope!==null?$adScope['amount_cents']:(int)$product['amount_cents'];
   if($adScope===null&&isset($request['amount_cents'])&&
      (int)$request['amount_cents']!==(int)$product['amount_cents'])
@@ -39,6 +43,7 @@ final class Payments {
   if($winbackExpiredAt!==null&&($choice['save']||$choice['reuse']))
    throw new HttpError(422,'WINBACK_CANNOT_COMBINE_CIT');
   $canonical=['customer_id'=>$external,'product_sku'=>$sku,'email'=>$email,'name'=>$name];
+  if($qa!==null)$canonical['qa_mode']=ProductionQa::MODE;
   if($adScope!==null){$canonical['campaign_id']=$adScope['campaign_id'];
    $canonical['quote_id']=$adScope['quote_id'];
    $canonical['amount_cents']=$checkoutAmount;$canonical['currency']='EUR';}
@@ -74,7 +79,13 @@ final class Payments {
    if($winbackExpiredAt!==null)
     Winback::preflight($db,$application,$cid,$winbackExpiredAt);
    $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
-   Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status) VALUES(?,?,?,?,?,?,?,?,'pending')",[$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount]);
+   if($env==='production'){
+    // Only the production tenant receives the opt-in QA migration.
+    Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,qa_credential_id,qa_run_key,status) VALUES(?,?,?,?,?,?,?,?,?,?,'pending')",[$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount,$qa['credential_id']??null,$qa['run_key']??null]);
+   }else{
+    // The existing staging tenant/schema is deliberately unchanged.
+    Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status) VALUES(?,?,?,?,?,?,?,?,'pending')",[$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount]);
+   }
    if($adScope!==null)
     AdvertisingBudget::record($db,$application,$cid,$pid,$adScope);
    if($choice['save']||$choice['reuse'])
@@ -214,16 +225,25 @@ final class Payments {
   ],$rows)];
  }
  public static function find(array $credential,string $id):array {
-  $p=Db::one(Db::get($credential['environment']),'SELECT * FROM payments WHERE id=? AND application_id=?',[$id,(int)$credential['application_id']]);
+  $qa=ProductionQa::isCredential($credential);
+  $p=$qa
+   ?Db::one(Db::get('production'),'SELECT * FROM payments WHERE id=? AND application_id=? AND qa_credential_id=?',
+     [$id,(int)$credential['application_id'],(int)$credential['id']])
+   :Db::one(Db::get($credential['environment']),'SELECT * FROM payments WHERE id=? AND application_id=?',[$id,(int)$credential['application_id']]);
   if(!$p)throw new HttpError(404,'Payment not found');return self::publicPayment($p);
  }
  // Recover an EXISTING payment without creating a checkout or calling Nexi.
  // Credential application and environment are mandatory query boundaries.
  public static function findByRequestKey(array $credential,string $requestKey):array {
   if(!preg_match('/^[A-Za-z0-9._:-]{1,128}$/D',$requestKey))throw new HttpError(400,'Invalid request key');
-  $p=Db::one(Db::get($credential['environment']),
-   'SELECT * FROM payments WHERE application_id=? AND request_key=?',
-   [(int)$credential['application_id'],$requestKey]);
+  $qa=ProductionQa::isCredential($credential);
+  $p=$qa
+   ?Db::one(Db::get('production'),
+     'SELECT * FROM payments WHERE application_id=? AND request_key=? AND qa_credential_id=?',
+     [(int)$credential['application_id'],$requestKey,(int)$credential['id']])
+   :Db::one(Db::get($credential['environment']),
+     'SELECT * FROM payments WHERE application_id=? AND request_key=?',
+     [(int)$credential['application_id'],$requestKey]);
   if(!$p)throw new HttpError(404,'Payment not found');
   return self::publicPayment($p);
  }
@@ -295,6 +315,13 @@ final class Payments {
     $eventId=Security::id();$body=['event_id'=>$eventId,'event_type'=>'payment.'.$status,'payment_id'=>$p['id'],'order_id'=>$order,'customer_id'=>$p['customer_id'],'amount_cents'=>(int)$p['amount_cents'],'currency'=>'EUR',
       'product_sku'=>$product['sku']??'',
       'environment'=>$env,'occurred_at'=>gmdate('c')];
+    if($env==='production'&&!empty($locked['qa_credential_id'])){
+     $customer=Db::one($db,'SELECT external_user_id FROM customers WHERE id=? AND application_id=?',[$locked['customer_id'],$locked['application_id']]);
+     if(!$customer||!preg_match('/^iradios-qa-[a-f0-9]{24}$/D',(string)$customer['external_user_id']))
+      throw new \RuntimeException('Production QA customer correlation missing');
+     $body['qa_mode']=ProductionQa::MODE;
+     $body['external_user_id']=$customer['external_user_id'];
+    }
     if($env==='staging'&&($product['sku']??null)===AdvertisingBudget::SKU){
       $advertising=AdvertisingBudget::eventScope($db,$p['id']);
       if($advertising===null)throw new \RuntimeException('Advertising payment scope missing');

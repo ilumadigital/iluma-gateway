@@ -40,13 +40,17 @@ final class Worker {
   $extra=$paymentId!==null?' AND payment_id=?':'';
   $params=$paymentId!==null?[$paymentId]:[];
   Db::exec($db,"UPDATE outgoing_events SET status='pending' WHERE status='sending' AND next_attempt_at<=UTC_TIMESTAMP()".$extra,$params);
-  // Each event inherits the immutable payment's QA route. No environment-wide
-  // webhook change can redirect the existing real production customer stream.
-  $selectExtra=$paymentId!==null?' AND e.payment_id=?':'';
-  $records=Db::all($db,"SELECT e.*,p.qa_credential_id FROM outgoing_events e
-    JOIN payments p ON p.id=e.payment_id
-    WHERE e.status='pending' AND e.next_attempt_at<=UTC_TIMESTAMP()".$selectExtra.
-    " ORDER BY e.created_at LIMIT ".max(1,min($limit,100)),$params);
+  // Only the PRODUCTION tenant gets the QA migration. The existing staging
+  // event queue stays on its original untouched schema and SQL query.
+  if($env==='production'){
+   $selectExtra=$paymentId!==null?' AND e.payment_id=?':'';
+   $records=Db::all($db,"SELECT e.*,p.qa_credential_id FROM outgoing_events e
+     JOIN payments p ON p.id=e.payment_id
+     WHERE e.status='pending' AND e.next_attempt_at<=UTC_TIMESTAMP()".$selectExtra.
+     " ORDER BY e.created_at LIMIT ".max(1,min($limit,100)),$params);
+  }else{
+   $records=Db::all($db,"SELECT * FROM outgoing_events WHERE status='pending' AND next_attempt_at<=UTC_TIMESTAMP()".$extra." ORDER BY created_at LIMIT ".max(1,min($limit,100)),$params);
+  }
   foreach($records as $event){
    // Atomic claim for multi-worker execution.
    if(!Db::exec($db,"UPDATE outgoing_events SET status='sending',next_attempt_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 2 MINUTE) WHERE id=? AND status='pending'",[$event['id']]))continue;

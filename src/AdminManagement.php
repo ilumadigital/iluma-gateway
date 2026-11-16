@@ -145,7 +145,7 @@ final class AdminManagement {
    '<button type="submit">Προσθήκη εφαρμογής</button></form></article>';
   return $s;
  }
- public static function application(PDO $reg,string $csrf,int $id):string {
+ public static function application(PDO $reg,string $env,string $csrf,int $id):string {
   $a=self::app($reg,$id);
   $s='<p><a href="/ilm-admin/?p=applications">← Επιστροφή στις εφαρμογές</a></p><article><h2>'.self::h($a['name']).'</h2>'.
    '<p>Application ID: '.(int)$a['id'].' · Slug: '.self::h($a['slug']).'</p>';
@@ -162,6 +162,19 @@ final class AdminManagement {
    '<button type="submit">Αποθήκευση</button></form></article>';
   $s.='<p><a href="/ilm-admin/?p=keys&application_id='.(int)$a['id'].'">Διαχείριση API Keys</a> · '.
    '<a href="/ilm-admin/?p=products&application_id='.(int)$a['id'].'">Προϊόντα εφαρμογής</a></p>';
+  if(!in_array((string)$a['slug'],['iradiosgr',AdminTestCenter::SLUG],true)) {
+   $route=ApplicationRouting::read($env,(int)$a['id']);
+   $s.='<article><h2>Payment Routing / '.self::h(strtoupper($env)).'</h2>'.
+    '<p class="management-hint">Ρύθμισε το webhook και το return path χωριστά για Stage και Live. Χωρίς έγκυρη ενεργή δρομολόγηση δεν δημιουργείται checkout.</p>'.
+    '<form method="post" class="management-form" data-stepup="Ρυθμίσεις πληρωμών εφαρμογής">'.
+    '<input type="hidden" name="_csrf" value="'.self::h($csrf).'"><input type="hidden" name="otp" value="">'.
+    '<input type="hidden" name="action" value="route-save"><input type="hidden" name="application_id" value="'.(int)$a['id'].'">'.
+    '<label>Webhook URL (στο domain της εφαρμογής)<input type="url" name="webhook_url" value="'.self::h($route['webhook_url']).'" placeholder="https://app.example.gr/api/gateway/webhook"></label>'.
+    '<label>Return path (π.χ. /payments/result)<input name="return_path" value="'.self::h($route['return_path']).'" placeholder="/payments/result"></label>'.
+    '<label class="management-check"><input type="checkbox" name="route_enabled" value="1"'.($route['enabled']?' checked':'').'> Ενεργοποίηση νέων πληρωμών στο '.self::h(strtoupper($env)).'</label>'.
+    '<p class="management-hint">Το webhook πρέπει να είναι HTTPS, στο ίδιο domain και να επαληθεύει υπογεγραμμένα Gateway events. Αλλαγές URLs σε ενεργό σύστημα απαιτούν έλεγχο εκκρεμών πληρωμών.</p>'.
+    '<button type="submit">Αποθήκευση δρομολόγησης</button></form></article>';
+  }
   return $s;
  }
  public static function products(PDO $reg,string $env,string $csrf,int $chosen=0):string {

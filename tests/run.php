@@ -105,10 +105,11 @@ $checkoutSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
 $statusSource=file_get_contents(dirname(__DIR__).'/src/BroadcasterMandates.php');
 check($autoSetupSource!==false&&
  str_contains($autoSetupSource,"Db::get('staging')")&&
- !str_contains($autoSetupSource,"Db::get('production')")&&
+ str_contains($autoSetupSource,"if($". "credential['environment']==='production')")&&
+ str_contains($autoSetupSource,'BROADCASTER_PRODUCTION_SCHEMA_OR_CATALOG_NOT_READY')&&
  str_contains($autoSetupSource,'GET_LOCK(')&&
  str_contains($autoSetupSource,'BROADCASTER_STAGING_CATALOG_MISMATCH'),
- 'Auto-bootstrap uses only staging DB, serializes and validates the catalog');
+ 'Auto-bootstrap modifies staging only; production catalog is read-only and preflighted');
 check($checkoutSource!==false&&
  strpos($checkoutSource,'BroadcasterStagingBootstrap::ensure($credential)')<
  strpos($checkoutSource,'SELECT * FROM products WHERE application_id=? AND sku=? AND enabled=1'),
@@ -179,6 +180,13 @@ check(\Iluma\Gateway\CheckoutReturn::url('staging','/checkout/result','IL'.str_r
  'https://stage.iradios.gr/premium?gateway_return=result&order=IL'.str_repeat('A',24),'Gateway returns to iRadios staging after Nexi');
 check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/cancel','IL'.str_repeat('B',24)) ===
  'https://play.iradios.gr/premium?gateway_return=cancel&order=IL'.str_repeat('B',24),'Production callback targets production iRadios only');
+
+check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result','IL'.str_repeat('C',24),'ADV-BUDGET',true) ===
+ 'https://stage.iradios.gr/backoffice/agency/campaigns?gateway_return=result&order=IL'.str_repeat('C',24),
+ 'New iRadios Production advertising returns to stage by immutable payment marker');
+check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result','IL'.str_repeat('D',24),'B-PREM',true) ===
+ 'https://stage.iradios.gr/backoffice/pro-features?gateway_return=result&order=IL'.str_repeat('D',24),
+ 'New iRadios Production broadcaster returns to stage by immutable payment marker');
 foreach(['https://evil.test/','/checkout/unexpected'] as $invalidPath){
  try{\Iluma\Gateway\CheckoutReturn::url('staging',$invalidPath,'IL'.str_repeat('A',24));$returnAccepted=true;}
  catch(\InvalidArgumentException){$returnAccepted=false;}

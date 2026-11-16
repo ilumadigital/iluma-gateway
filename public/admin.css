@@ -907,3 +907,14 @@ body.is-authenticated{
 @media(prefers-reduced-motion:reduce){
   .is-authenticated aside.app-sidebar{transition:none}
 }
+
+/* ILM Admin management / catalog / test center */
+.management-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:14px;align-items:end;margin-top:16px}
+.management-form>label{display:flex;flex-direction:column;gap:7px;min-width:0;font-weight:600}
+.management-form input:not([type=checkbox]),.management-form select{width:100%;min-width:0;max-width:100%;padding:12px 14px;border:1px solid var(--line-strong);border-radius:12px;background:#fff;color:var(--ink)}
+.management-form>button,.management-form>.management-hint{grid-column:1/-1}
+.management-hint{font-size:13px;color:var(--muted);line-height:1.6}
+.management-form .management-check,.management-check{display:flex;flex-direction:row;align-items:flex-start;gap:10px;font-weight:500;line-height:1.5}
+.management-check input{width:auto;flex:0 0 auto;margin-top:4px}
+.dashboard-table-scroll code{white-space:nowrap}
+@media(max-width:560px){.management-form{grid-template-columns:1fr}.management-form>button{width:100%}}

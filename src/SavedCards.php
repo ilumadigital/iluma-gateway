@@ -129,8 +129,12 @@ final class SavedCards {
  public static function processRevocations(string $env,int $limit=20):void {
   if(!in_array($env,['staging','production'],true))return;
   $db=Db::get($env);
-  $rows=Db::all($db,"SELECT id,contract_id FROM saved_card_agreements
-    WHERE status='revocation_pending' ORDER BY updated_at ASC LIMIT ".max(1,min($limit,50)));
+  $rows=Db::all($db,$env==='production'
+    ?"SELECT a.id,a.contract_id FROM saved_card_agreements a JOIN payments p ON p.id=a.payment_id
+      WHERE p.iradios_stage_routed=1 AND a.status='revocation_pending'
+      ORDER BY a.updated_at ASC LIMIT ".max(1,min($limit,50))
+    :"SELECT id,contract_id FROM saved_card_agreements
+      WHERE status='revocation_pending' ORDER BY updated_at ASC LIMIT ".max(1,min($limit,50)));
   foreach($rows as $card){
    try {
     $reply=NexiClient::forEnvironment($env)->deactivateContract($card['contract_id']);
@@ -144,10 +148,11 @@ final class SavedCards {
  }
  public static function syncPending(string $env,int $limit=15):void {
   if(!in_array($env,['staging','production'],true))return;
+  $productionScope=$env==='production'?' AND p.iradios_stage_routed=1':'';
   $rows=Db::all(Db::get($env),"SELECT a.payment_id FROM saved_card_agreements a
     JOIN payments p ON p.id=a.payment_id
-    WHERE a.status='pending' AND p.status='paid' ORDER BY a.created_at
-    LIMIT ".max(1,min($limit,40)));
+    WHERE a.status='pending' AND p.status='paid'".
+    $productionScope." ORDER BY a.created_at LIMIT ".max(1,min($limit,40)));
   foreach($rows as $row){
    try{self::verifyPaid($env,$row['payment_id']);}
    catch(\Throwable $e){error_log('Nexi CIT contract verification deferred');}

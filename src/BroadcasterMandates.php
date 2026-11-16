@@ -307,18 +307,24 @@ final class BroadcasterMandates {
  }
  public static function pendingVerification(string $env,int $limit=10):void {
   if(!in_array($env,['staging','production'],true)||!self::schemaReady(Db::get($env)))return;
+  $productionScope=$env==='production'?' AND p.iradios_stage_routed=1':'';
   $rows=Db::all(Db::get($env),"SELECT m.initial_payment_id FROM broadcaster_mandates m
    JOIN payments p ON p.id=m.initial_payment_id
-   WHERE m.status IN ('pending','verification_pending') AND p.status='paid'
-   ORDER BY m.created_at LIMIT ".max(1,min($limit,30)));
+   WHERE m.status IN ('pending','verification_pending') AND p.status='paid'".
+   $productionScope." ORDER BY m.created_at LIMIT ".max(1,min($limit,30)));
   foreach($rows as $row)try{self::verifyPaid($env,$row['initial_payment_id']);}
    catch(\Throwable $e){error_log('Broadcaster contract verification deferred');}
  }
  public static function pendingDeactivation(string $env,int $limit=10):void {
-  if($env!=='staging'||!self::schemaReady(Db::get($env)))return;
-  $rows=Db::all(Db::get($env),"SELECT id,contract_id FROM broadcaster_mandates
-   WHERE status='cancelled' AND deactivated_at IS NULL ORDER BY cancelled_at
-   LIMIT ".max(1,min($limit,30)));
+  if(!in_array($env,['staging','production'],true)||!self::schemaReady(Db::get($env)))return;
+  $db=Db::get($env);
+  $rows=Db::all($db,$env==='production'
+   ?"SELECT m.id,m.contract_id FROM broadcaster_mandates m JOIN payments p ON p.id=m.initial_payment_id
+     WHERE p.iradios_stage_routed=1 AND m.status='cancelled' AND m.deactivated_at IS NULL
+     ORDER BY m.cancelled_at LIMIT ".max(1,min($limit,30))
+   :"SELECT id,contract_id FROM broadcaster_mandates
+     WHERE status='cancelled' AND deactivated_at IS NULL ORDER BY cancelled_at
+     LIMIT ".max(1,min($limit,30)));
   foreach($rows as $row)try{
    NexiClient::forEnvironment($env)->deactivateContract($row['contract_id']);
    Db::exec(Db::get($env),"UPDATE broadcaster_mandates

@@ -218,7 +218,13 @@ try {
    audit('api_key_create',$env);$reveal='<div class="secret"><strong>Εμφάνιση ΜΟΝΟ ΜΙΑ ΦΟΡΑ</strong><pre>'.html('KEY: '.$key."\nSECRET: ".$secret).'</pre></div>';
   } elseif($action==='key-disable'){
    $env=credentialEnv();$otp=(string)($_POST['otp']??'');$u=Db::one($reg,'SELECT totp_secret_box FROM admin_users WHERE id=?',[$_SESSION['admin_id']]);requireStepUp($reg,$otp);
-   $id=(int)($_POST['id']??0);Db::exec($reg,'UPDATE application_credentials SET enabled=0 WHERE id=? AND environment=?',[$id,$env]);audit('api_key_disable',$env.':'.$id);$notice='Το κλειδί απενεργοποιήθηκε.';
+   $id=(int)($_POST['id']??0);
+   $credential=Db::one($reg,'SELECT application_id FROM application_credentials WHERE id=? AND environment=? AND enabled=1',[$id,$env]);
+   if(!$credential)throw new HttpError(404,'Το API Key δεν βρέθηκε.');
+   $pending=Db::one(Db::get($env),"SELECT COUNT(*) AS n FROM outgoing_events WHERE application_id=? AND status IN ('pending','sending')",[(int)$credential['application_id']]);
+   if((int)($pending['n']??0)>0)throw new HttpError(409,'Πρώτα ολοκλήρωσε τις εκκρεμείς αποστολές webhook πριν απενεργοποιήσεις το κλειδί.');
+   Db::exec($reg,'UPDATE application_credentials SET enabled=0 WHERE id=? AND environment=?',[$id,$env]);
+   audit('api_key_disable',$env.':'.$id);$notice='Το κλειδί απενεργοποιήθηκε.';
   } elseif($action==='export'){
    requireStepUp($reg,(string)($_POST['otp']??''));
    $_GET['p']='export';

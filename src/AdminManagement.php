@@ -58,7 +58,7 @@ final class AdminManagement {
    $slug=trim((string)($post['slug']??''));
    $name=trim((string)($post['name']??''));
    if(!preg_match('/^[a-z][a-z0-9-]{2,69}$/D',$slug) ||
-      in_array($slug,['iluma-internal'],true) || mb_strlen($name)>160 || $name==='')
+      in_array($slug,['iluma-internal'],true) || strlen($name)>160 || $name==='')
     throw new HttpError(422,'Έλεγξε το όνομα και το slug της εφαρμογής.');
    $stage=self::origin((string)($post['staging_origin']??''));
    $live=self::origin((string)($post['production_origin']??''));
@@ -93,7 +93,7 @@ final class AdminManagement {
    $period=trim((string)($post['period_days']??''));
    $enabled=isset($post['enabled'])?1:0;
    if(!preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/D',$sku) ||
-     $title==='' || mb_strlen($title)>180)
+     $title==='' || strlen($title)>180)
     throw new HttpError(422,'Μη έγκυρο SKU ή τίτλος.');
    if($period!==''&&(!ctype_digit($period)||(int)$period<1||(int)$period>3650))
     throw new HttpError(422,'Η περίοδος πρέπει να είναι 1–3650 ημέρες.');

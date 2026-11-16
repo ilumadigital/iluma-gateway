@@ -8,11 +8,9 @@ final class Payments {
  }
  public static function checkout(array $credential,array $request,string $key):array {
   $env=$credential['environment'];$db=Db::get($env);$application=(int)$credential['application_id'];
-  // Until an application's signed webhook and return routing are configured
-  // end-to-end, issuing its API key must NOT silently send money events to iRadios.
-  // The internal diagnostic has an isolated local settlement path.
-  if(!in_array((string)($credential['slug']??''),['iradiosgr',AdminTestCenter::SLUG],true))
-   throw new HttpError(503,'APPLICATION_PAYMENT_ROUTING_NOT_CONFIGURED');
+  // A configured, approved HTTPS route is mandatory for third-party apps.
+  // Built-in iRadios and internal diagnostic retain their isolated paths.
+  ApplicationRouting::assertCheckout($credential);
   $toStage=$env==='production'&&($credential['slug']??'')==='iradiosgr';
   if($toStage&&!Config::stageProductionAllowed())
    throw new HttpError(503,'IRADIOS_STAGE_PRODUCTION_DISABLED');

@@ -662,7 +662,7 @@ $qaCredential=['id'=>712,'application_id'=>1,'environment'=>'production',
  'slug'=>'iradiosgr','key_hash'=>$qaHash];
 $normalCredential=['id'=>713,'application_id'=>1,'environment'=>'production',
  'slug'=>'iradiosgr','key_hash'=>hash('sha256','other-prod-key')];
-$qaBody=['qa_mode'=>\\Iluma\\Gateway\\ProductionQa::MODE,
+$qaBody=['qa_mode'=>\Iluma\Gateway\ProductionQa::MODE,
  'customer_id'=>'iradios-qa-'.$qaListener,'product_sku'=>'L-PREM',
  'amount_cents'=>399,'currency'=>'EUR',
  'name'=>'QA Listener','email'=>'qa@example.com'];
@@ -675,13 +675,13 @@ putenv('APP_ENV=production');putenv('PRODUCTION_ENABLED=1');
 putenv('IRADIOS_PROD_QA_KEY_SHA256='.$qaHash);
 putenv('IRADIOS_PROD_QA_LISTENER_ID='.$qaListener);
 putenv('IRADIOS_PROD_QA_CHECKOUT_ENABLED=0');
-check(\\Iluma\\Gateway\\ProductionQa::isCredential($qaCredential),'Only exact pinned production QA key is recognized');
-check(!\\Iluma\\Gateway\\ProductionQa::isCredential($normalCredential),'Normal production credential does not become QA');
-try{\\Iluma\\Gateway\\ProductionQa::checkoutScope($qaCredential,$qaBody,$qaRequestKey);$qaAccepted=true;}
-catch(\\Iluma\\Gateway\\HttpError){$qaAccepted=false;}
+check(\Iluma\Gateway\ProductionQa::isCredential($qaCredential),'Only exact pinned production QA key is recognized');
+check(!\Iluma\Gateway\ProductionQa::isCredential($normalCredential),'Normal production credential does not become QA');
+try{\Iluma\Gateway\ProductionQa::checkoutScope($qaCredential,$qaBody,$qaRequestKey);$qaAccepted=true;}
+catch(\Iluma\Gateway\HttpError){$qaAccepted=false;}
 check(!$qaAccepted,'Real QA checkout fails closed without an explicit enable flag');
 putenv('IRADIOS_PROD_QA_CHECKOUT_ENABLED=1');
-$scope=\\Iluma\\Gateway\\ProductionQa::checkoutScope($qaCredential,$qaBody,$qaRequestKey);
+$scope=\Iluma\Gateway\ProductionQa::checkoutScope($qaCredential,$qaBody,$qaRequestKey);
 check(($scope['credential_id']??null)===712 && strlen($scope['run_key']??'')===64,
  'Exact account, signed key, €3.99 and UUID map to one immutable QA run');
 foreach([
@@ -690,33 +690,33 @@ foreach([
  ['use_saved_card'=>true],['qa_mode'=>'unknown'],['external_url'=>'https://evil.invalid']
 ] as $patch){
  $denied=false;
- try{\\Iluma\\Gateway\\ProductionQa::checkoutScope($qaCredential,array_replace($qaBody,$patch),$qaRequestKey);}
- catch(\\Iluma\\Gateway\\HttpError){$denied=true;}
+ try{\Iluma\Gateway\ProductionQa::checkoutScope($qaCredential,array_replace($qaBody,$patch),$qaRequestKey);}
+ catch(\Iluma\Gateway\HttpError){$denied=true;}
  check($denied,'QA refuses modified price/SKU/account/recurrence/URL or untrusted scope');
 }
-try{\\Iluma\\Gateway\\ProductionQa::checkoutScope($normalCredential,$qaBody,$qaRequestKey);$spoofed=true;}
-catch(\\Iluma\\Gateway\\HttpError){$spoofed=false;}
+try{\Iluma\Gateway\ProductionQa::checkoutScope($normalCredential,$qaBody,$qaRequestKey);$spoofed=true;}
+catch(\Iluma\Gateway\HttpError){$spoofed=false;}
 check(!$spoofed,'Normal live API key cannot request staging QA callbacks');
-check(\\Iluma\\Gateway\\ProductionQa::checkoutScope($normalCredential,[
+check(\Iluma\Gateway\ProductionQa::checkoutScope($normalCredential,[
  'customer_id'=>'normal-production-customer','product_sku'=>'L-PREM'
  ],'normal-key')===null,'Existing production checkouts remain unchanged');
-try{\\Iluma\\Gateway\\ProductionQa::restrictApi($qaCredential,'POST','/api/v1/accounts/cancel-all');$broad=true;}
-catch(\\Iluma\\Gateway\\HttpError){$broad=false;}
+try{\Iluma\Gateway\ProductionQa::restrictApi($qaCredential,'POST','/api/v1/accounts/cancel-all');$broad=true;}
+catch(\Iluma\Gateway\HttpError){$broad=false;}
 check(!$broad,'Dedicated production QA key cannot cancel accounts or access other billing APIs');
-check(\\Iluma\\Gateway\\ProductionQa::verifyProduct([
+check(\Iluma\Gateway\ProductionQa::verifyProduct([
  'sku'=>'L-PREM','amount_cents'=>399,'currency'=>'EUR','enabled'=>1
  ])===null,'Actual production product must be precisely EUR 3.99');
-try{\\Iluma\\Gateway\\ProductionQa::verifyProduct([
+try{\Iluma\Gateway\ProductionQa::verifyProduct([
  'sku'=>'L-PREM','amount_cents'=>499,'currency'=>'EUR','enabled'=>1
- ]);$priceOkay=true;}catch(\\Iluma\\Gateway\\HttpError){$priceOkay=false;}
+ ]);$priceOkay=true;}catch(\Iluma\Gateway\HttpError){$priceOkay=false;}
 check(!$priceOkay,'An unexpected production amount fails before Nexi POST');
 $qaOrder='IL'.str_repeat('F',24);
-check(str_starts_with(\\Iluma\\Gateway\\CheckoutReturn::url('production','/checkout/result',$qaOrder,'L-PREM',true),
+check(str_starts_with(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result',$qaOrder,'L-PREM',true),
  'https://stage.iradios.gr/premium?'),'Only tagged QA payment returns to staging');
-check(str_starts_with(\\Iluma\\Gateway\\CheckoutReturn::url('production','/checkout/result',$qaOrder,'L-PREM'),
+check(str_starts_with(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result',$qaOrder,'L-PREM'),
  'https://play.iradios.gr/premium?'),'Ordinary production payment still returns to the live server');
-putenv('IRADIOS_PROD_QA_WEBHOOK='.\\Iluma\\Gateway\\ProductionQa::WEBHOOK);
-check(\\Iluma\\Gateway\\ProductionQa::webhook()===\\Iluma\\Gateway\\ProductionQa::WEBHOOK,
+putenv('IRADIOS_PROD_QA_WEBHOOK='.\Iluma\Gateway\ProductionQa::WEBHOOK);
+check(\Iluma\Gateway\ProductionQa::webhook()===\Iluma\Gateway\ProductionQa::WEBHOOK,
  'QA webhook is pinned to a fixed staging HTTPS endpoint');
 foreach($oldQaEnv as $name=>$value){
  if($value===false)putenv($name);
@@ -728,8 +728,8 @@ $qaPayments=file_get_contents(dirname(__DIR__).'/src/Payments.php');
 check(str_contains($qaMigration,'ADD UNIQUE KEY uq_production_qa_run_key') &&
  str_contains($qaPayments,'qa_credential_id') && str_contains($qaWorker,'ProductionQa::webhook()'),
  'Gateway stores QA identity, prevents a second production charge and routes signed outbox by payment');
-check(str_contains($qaWorker,"if(\\$env==='production')") &&
- str_contains($qaPayments,"if(\\$env==='production')"),
+check(str_contains($qaWorker,"if(\$env==='production')") &&
+ str_contains($qaPayments,"if(\$env==='production')"),
  'Existing staging database and outbox need no production migration');
 
 echo "$tests isolated offline tests passed. No Nexi transaction was executed.\n";

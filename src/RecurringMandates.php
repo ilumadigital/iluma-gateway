@@ -165,19 +165,29 @@ final class RecurringMandates {
   * provider POST after an error/timeout, and never run outside staging.
   */
  public static function chargeDue(string $env,int $limit=5):void {
-  if($env!=='staging'||Config::get('APP_ENV')==='production'||
-     Config::get('MIT_SANDBOX_EXECUTION_ENABLED')!=='1'||
-     Config::get('MIT_SANDBOX_UAT_APPROVED')!=='1')return;
-  $db=Db::get('staging');
+  $enabled=($env==='staging'&&Config::get('APP_ENV')!=='production'&&
+     Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
+     Config::get('MIT_SANDBOX_UAT_APPROVED')==='1')||
+    ($env==='production'&&Config::stageProductionAllowed()&&
+     Config::get('MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&
+     Config::get('MIT_PRODUCTION_UAT_APPROVED')==='1');
+  if(!$enabled)return;
+  $db=Db::get($env);
   if(!self::schemaReady($db))return;
-  $rows=Db::all($db,"SELECT id FROM recurring_mandates
-   WHERE status='active' AND verified_at IS NOT NULL AND cancelled_at IS NULL
-    AND next_due_at<=UTC_TIMESTAMP() ORDER BY next_due_at LIMIT ".max(1,min(5,$limit)));
+  $rows=Db::all($db,$env==='production'
+   ?"SELECT m.id FROM recurring_mandates m JOIN payments p ON p.id=m.initial_payment_id
+     WHERE p.iradios_stage_routed=1 AND m.status='active'
+       AND m.verified_at IS NOT NULL AND m.cancelled_at IS NULL
+       AND m.next_due_at<=UTC_TIMESTAMP() ORDER BY m.next_due_at LIMIT ".max(1,min(5,$limit))
+   :"SELECT id FROM recurring_mandates
+     WHERE status='active' AND verified_at IS NOT NULL AND cancelled_at IS NULL
+       AND next_due_at<=UTC_TIMESTAMP() ORDER BY next_due_at LIMIT ".max(1,min(5,$limit)));
   foreach($rows as $row){
    $mandateId=$row['id'];$payment=null;$mandate=null;
    $db->beginTransaction();
    try{
-    $mandate=Db::one($db,"SELECT m.*,p.product_id FROM recurring_mandates m
+    $extra=$env==='production'?',p.iradios_stage_routed,p.origin_credential_id':'';
+    $mandate=Db::one($db,"SELECT m.*,p.product_id".$extra." FROM recurring_mandates m
      JOIN payments p ON p.id=m.initial_payment_id
      WHERE m.id=? FOR UPDATE",[$mandateId]);
     if(!$mandate||$mandate['status']!=='active'||$mandate['cancelled_at']!==null||
@@ -209,11 +219,22 @@ final class RecurringMandates {
     $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
     $req='mit-'.$mandateId.'-'.gmdate('YmdHis',strtotime($mandate['next_due_at'].' UTC'));
     $hash=hash('sha256',Security::json([$mandateId,$mandate['next_due_at'],399,'EUR']));
-    Db::exec($db,"INSERT INTO payments
-     (id,application_id,customer_id,product_id,order_id,request_key,request_hash,
-      amount_cents,currency,status)
-     VALUES(?,?,?,?,?,?,?,399,'EUR','pending')",
-     [$pid,$mandate['application_id'],$mandate['customer_id'],$regular['id'],$order,$req,$hash]);
+    if($env==='production'){
+     if(empty($mandate['iradios_stage_routed'])||empty($mandate['origin_credential_id']))
+      throw new \RuntimeException('Production MIT origin credential not pinned');
+     Db::exec($db,"INSERT INTO payments
+      (id,application_id,customer_id,product_id,order_id,request_key,request_hash,
+       amount_cents,currency,status,iradios_stage_routed,origin_credential_id)
+      VALUES(?,?,?,?,?,?,?,399,'EUR','pending',1,?)",
+      [$pid,$mandate['application_id'],$mandate['customer_id'],$regular['id'],$order,$req,$hash,
+       (int)$mandate['origin_credential_id']]);
+    }else{
+     Db::exec($db,"INSERT INTO payments
+      (id,application_id,customer_id,product_id,order_id,request_key,request_hash,
+       amount_cents,currency,status)
+      VALUES(?,?,?,?,?,?,?,399,'EUR','pending')",
+      [$pid,$mandate['application_id'],$mandate['customer_id'],$regular['id'],$order,$req,$hash]);
+    }
     Db::exec($db,"INSERT INTO recurring_cycles
      (id,mandate_id,cycle_due_at,payment_id,status)
      VALUES(?,?,?,?, 'pending')",[Security::id(),$mandateId,$mandate['next_due_at'],$pid]);

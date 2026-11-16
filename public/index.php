@@ -36,8 +36,9 @@ try {
   $foundEnv=null;$foundPaymentId=null;$foundSku=null;$productionQa=false;
   foreach(['staging','production'] as $candidate){
    if($candidate==='production'&&!Config::liveAllowed())continue;
+   $qaSelect=$candidate==='production'?'p.qa_credential_id':'NULL AS qa_credential_id';
    $found=Db::one(Db::get($candidate),
-    'SELECT p.id,p.qa_credential_id,pr.sku FROM payments p JOIN products pr ON pr.id=p.product_id WHERE p.order_id=?',[$order]);
+    'SELECT p.id,'.$qaSelect.',pr.sku FROM payments p JOIN products pr ON pr.id=p.product_id WHERE p.order_id=?',[$order]);
    if($found){$foundEnv=$candidate;$foundPaymentId=(string)$found['id'];$foundSku=(string)$found['sku'];$productionQa=$candidate==='production'&&!empty($found['qa_credential_id']);break;}
   }
   if($foundEnv===null)throw new HttpError(404,'Order not found');

@@ -9,15 +9,16 @@ namespace Iluma\Gateway;
  */
 final class AccountDeletion {
  public static function cancelAll(array $credential,string $external):array {
-  if(($credential['environment']??'')!=='staging'
+  if(!in_array(($credential['environment']??''),['staging','production'],true)
      ||($credential['slug']??'')!=='iradiosgr'
-     ||Config::get('APP_ENV')==='production'
-     ||Config::get('PRODUCTION_ENABLED')==='1')
+     ||(($credential['environment']??'')==='staging'&&
+        (Config::get('APP_ENV')==='production'||Config::get('PRODUCTION_ENABLED')==='1'))
+     ||(($credential['environment']??'')==='production'&&!Config::stageProductionAllowed()))
    throw new HttpError(403,'ACCOUNT_DELETION_STAGING_ONLY');
   if(!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
    throw new HttpError(422,'CUSTOMER_SCOPE_INVALID');
 
-  $db=Db::get('staging');$app=(int)$credential['application_id'];
+  $db=Db::get($credential['environment']);$app=(int)$credential['application_id'];
   // Never acknowledge deletion if a ledger/migration cannot be inspected.
   $ready=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
    WHERE table_schema=DATABASE() AND table_name IN

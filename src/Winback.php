@@ -24,7 +24,7 @@ final class Winback {
    if($proof!==null)throw new HttpError(422,'UNEXPECTED_WINBACK_PROOF');
    return null;
   }
-  if($environment!=='staging'||$slug!=='iradiosgr')
+  if(!in_array($environment,['staging','production'],true)||$slug!=='iradiosgr'||($environment==='production'&&!Config::stageProductionAllowed()))
    throw new HttpError(403,'WINBACK_STAGING_ONLY');
   if(!is_string($proof)||!preg_match('/^20[2-9][0-9]-[0-1][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][.]?[0-9]{0,3}Z$/D',$proof))
    throw new HttpError(422,'WINBACK_EXPIRED_AT_INVALID');
@@ -81,10 +81,10 @@ final class Winback {
  }
  /** Account scoped, HMAC-authenticated, read-only provider ledger state. */
  public static function status(array $credential,string $external):array{
-  if($credential['environment']!=='staging'||($credential['slug']??'')!=='iradiosgr'||
+  if(!in_array($credential['environment'],['staging','production'],true)||($credential['slug']??'')!=='iradiosgr'||($credential['environment']==='production'&&!Config::stageProductionAllowed())||
      !preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
    throw new HttpError(403,'WINBACK_STAGING_ONLY');
-  $db=Db::get('staging');
+  $db=Db::get($credential['environment']);
   if(!self::ready($db))return ['state'=>'unavailable','used'=>false];
   $c=Db::one($db,"SELECT id FROM customers WHERE application_id=? AND external_user_id=?",
     [(int)$credential['application_id'],$external]);

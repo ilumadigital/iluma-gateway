@@ -17,7 +17,7 @@ final class RecurringMandates {
   if($enable&&$version!==self::CONSENT)
    throw new HttpError(422,'EXPLICIT_RECURRING_CONSENT_REQUIRED');
   if(!$enable && $version!==null)throw new HttpError(422,'INVALID_RECURRING_CONSENT');
-  if($enable&&($env!=='staging'||!in_array($sku,['L-PREM',Winback::SKU],true)||$slug!=='iradiosgr'))
+  if($enable&&(!in_array($env,['staging','production'],true)||!in_array($sku,['L-PREM',Winback::SKU],true)||$slug!=='iradiosgr'||($env==='production'&&!Config::stageProductionAllowed())))
    throw new HttpError(403,'RECURRING_STAGING_ONLY');
   if($enable&&(!empty($body['save_card'])||!empty($body['use_saved_card'])))
    throw new HttpError(422,'CANNOT_COMBINE_CIT_AND_MIT');
@@ -60,11 +60,11 @@ final class RecurringMandates {
   return self::recurrence($id);
  }
  private static function credentialCustomer(array $credential,string $external):array {
-  if($credential['environment']!=='staging'||($credential['slug']??'')!=='iradiosgr')
+  if(!in_array($credential['environment'],['staging','production'],true)||($credential['slug']??'')!=='iradiosgr'||($credential['environment']==='production'&&!Config::stageProductionAllowed()))
    throw new HttpError(403,'STAGING_ONLY');
   if(!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
    throw new HttpError(422,'CUSTOMER_SCOPE_INVALID');
-  return [Db::get('staging'),(int)$credential['application_id']];
+  return [Db::get($credential['environment']),(int)$credential['application_id']];
  }
  private static function schemaReady(\PDO $db):bool {
   $r=Db::one($db,"SELECT COUNT(*) AS n FROM information_schema.tables
@@ -88,9 +88,12 @@ final class RecurringMandates {
    'next_charge_at'=>!empty($row['next_due_at'])?str_replace(' ','T',$row['next_due_at']).'Z':null,
    'paid_through_at'=>!empty($row['paid_through_at'])?str_replace(' ','T',$row['paid_through_at']).'Z':null,
    'cancelled_at'=>!empty($row['cancelled_at'])?str_replace(' ','T',$row['cancelled_at']).'Z':null,
-   'execution_enabled'=>Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'
-      && Config::get('MIT_SANDBOX_UAT_APPROVED')==='1'
-      && Config::get('APP_ENV')==='staging'
+   'execution_enabled'=>$credential['environment']==='production'
+    ?(Config::stageProductionAllowed()&&Config::get('MIT_PRODUCTION_EXECUTION_ENABLED')==='1'
+      &&Config::get('MIT_PRODUCTION_UAT_APPROVED')==='1')
+    :(Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'
+      &&Config::get('MIT_SANDBOX_UAT_APPROVED')==='1'
+      &&Config::get('APP_ENV')==='staging')
   ];
  }
  public static function cancel(array $credential,string $external):array {
@@ -110,13 +113,13 @@ final class RecurringMandates {
   return self::status($credential,$external);
  }
  public static function verifyPaid(string $env,string $paymentId):void {
-  if($env!=='staging')return;
-  $db=Db::get('staging');
+  if(!in_array($env,['staging','production'],true))return;
+  $db=Db::get($env);
   $m=Db::one($db,"SELECT m.* FROM recurring_mandates m
    JOIN payments p ON p.id=m.initial_payment_id
    WHERE p.id=? AND p.status='paid' AND m.status IN ('pending','verification_pending')",[$paymentId]);
   if(!$m)return;
-  $response=NexiClient::forEnvironment('staging')->contractsForCustomer($m['provider_customer_id']);
+  $response=NexiClient::forEnvironment($env)->contractsForCustomer($m['provider_customer_id']);
   $confirmed=false;
   foreach(($response['contracts']??[]) as $c){
    if(is_array($c)&&($c['contractId']??null)===$m['contract_id']
@@ -285,7 +288,7 @@ final class RecurringMandates {
   }
  }
  public static function pendingVerification(string $env,int $limit=10):void {
-  if($env!=='staging')return;
+  if(!in_array($env,['staging','production'],true))return;
   if(!self::schemaReady(Db::get($env)))return;
   $rows=Db::all(Db::get($env),"SELECT m.initial_payment_id FROM recurring_mandates m
    JOIN payments p ON p.id=m.initial_payment_id WHERE m.status IN ('pending','verification_pending')

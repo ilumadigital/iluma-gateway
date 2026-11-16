@@ -170,11 +170,24 @@ try {
     }
    }
    audit('admin_'.$action,$env);
+  } elseif($action==='route-save'){
+   $env=credentialEnv();
+   requireStepUp($reg,(string)($_POST['otp']??''));
+   $appId=(int)($_POST['application_id']??0);
+   $notice=\Iluma\Gateway\ApplicationRouting::save($reg,$env,$appId,$_POST);
+   audit('application_route_save',$env.':'.$appId);
+   $_GET['p']='application';$_GET['id']=$appId;
   } elseif(in_array($action,['application-create','application-update','product-save'],true)){
    $env=credentialEnv();
    requireStepUp($reg,(string)($_POST['otp']??''));
    $notice=\Iluma\Gateway\AdminManagement::handle($action,$reg,$env,$_POST);
    audit('management_'.$action,$env.':'.(string)($_POST['application_id']??'new'));
+   if($action==='application-create')$_GET['p']='applications';
+   elseif($action==='application-update'){
+    $_GET['p']='application';$_GET['id']=(int)($_POST['application_id']??0);
+   } else {
+    $_GET['p']='products';$_GET['application_id']=(int)($_POST['application_id']??0);
+   }
   } elseif($action==='nexi-save'){
    $env=credentialEnv();$value=(string)($_POST['secret']??'');$otp=(string)($_POST['otp']??'');
    $u=Db::one($reg,'SELECT totp_secret_box FROM admin_users WHERE id=?',[$_SESSION['admin_id']]);
@@ -318,7 +331,7 @@ try {
  } elseif($p==='applications'){
   $content.=\Iluma\Gateway\AdminManagement::applications($reg,$csrf);
  } elseif($p==='application'){
-  $content.=\Iluma\Gateway\AdminManagement::application($reg,$csrf,(int)($_GET['id']??0));
+  $content.=\Iluma\Gateway\AdminManagement::application($reg,$env,$csrf,(int)($_GET['id']??0));
  } elseif($p==='products'){
   $content.=\Iluma\Gateway\AdminManagement::products($reg,$env,$csrf,(int)($_GET['application_id']??0));
  } elseif($p==='product'){

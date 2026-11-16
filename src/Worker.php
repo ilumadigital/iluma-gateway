@@ -51,6 +51,10 @@ final class Worker {
    // Atomic claim for multi-worker execution.
    if(!Db::exec($db,"UPDATE outgoing_events SET status='sending',next_attempt_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 2 MINUTE) WHERE id=? AND status='pending'",[$event['id']]))continue;
    $code=null;try {
+    $app=Db::one(Db::get('registry'),'SELECT slug FROM applications WHERE id=?',[(int)$event['application_id']]);
+    if(($app['slug']??null)===AdminTestCenter::SLUG){
+     $status='delivered';$note='internal_test';$code=204;
+    } else {
     $stageRouted=$env==='production'&&!empty($event['iradios_stage_routed']);
     $credential=$stageRouted
      ?Db::one(Db::get('registry'),"SELECT secret_box FROM application_credentials WHERE id=? AND application_id=? AND environment='production' AND enabled=1",[(int)$event['origin_credential_id'],$event['application_id']])
@@ -69,6 +73,7 @@ final class Worker {
     $result=curl_exec($ch);$code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
     if($result===false || $code<200 || $code>=300) throw new \RuntimeException('Webhook delivery HTTP '.$code);
     $status='delivered';$note='acknowledged';
+    }
    }catch(\Throwable $e){$status='pending';$note='retry_required';$code=$code??null;error_log('Webhook delivery failed: '.$e->getMessage());}
    $attempt=(int)$event['attempts']+1;
    Db::exec($db,"UPDATE outgoing_events SET status=?,attempts=?,next_attempt_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL ? SECOND) WHERE id=?",[$status,$attempt,min(86400,60*(2**min($attempt,10))),$event['id']]);

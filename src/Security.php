@@ -28,6 +28,8 @@ final class Security {
   $db=Db::get('registry');
   $record=Db::one($db,'SELECT c.*, a.slug FROM application_credentials c JOIN applications a ON a.id=c.application_id WHERE c.key_hash=? AND c.enabled=1 AND a.enabled=1',[hash('sha256',$key)]);
   if(!$record) throw new HttpError(401,'Invalid API credential');
+  if(($record['slug']??null)===AdminTestCenter::SLUG)
+   throw new HttpError(403,'Internal checkout requires administrator access');
   $calculated=self::signature(self::decrypt($record['secret_box']),$time,$nonce,$method,$path,$raw);
   if(!hash_equals($calculated,$provided)) throw new HttpError(401,'Invalid API signature');
   try {Db::exec($db,'INSERT INTO api_nonces(credential_id,nonce,expires_at) VALUES(?,?,DATE_ADD(UTC_TIMESTAMP(), INTERVAL 6 MINUTE))',[(int)$record['id'],$nonce]);}

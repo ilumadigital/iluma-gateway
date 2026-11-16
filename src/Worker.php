@@ -60,16 +60,22 @@ final class Worker {
      ?Db::one(Db::get('registry'),"SELECT secret_box FROM application_credentials WHERE id=? AND application_id=? AND environment='production' AND enabled=1",[(int)$event['origin_credential_id'],$event['application_id']])
      :Db::one(Db::get('registry'),"SELECT secret_box FROM application_credentials WHERE application_id=? AND environment=? AND enabled=1 ORDER BY created_at DESC LIMIT 1",[$event['application_id'],$env]);
     if(!$credential)throw new \RuntimeException('No outbound credential');
-    $destination=$stageRouted?Config::stagePaymentWebhook():Config::webhook($env);
+    $destination=$stageRouted?Config::stagePaymentWebhook():
+      (($app['slug']??null)==='iradiosgr'
+       ?Config::webhook($env)
+       :ApplicationRouting::webhook($env,(int)$event['application_id']));
     $secret=Security::decrypt($credential['secret_box']);$body=(string)$event['body_json'];$time=(string)time();$nonce=Security::id();
     $path=(string)parse_url($destination,PHP_URL_PATH);
     $sig=Security::signature($secret,$time,$nonce,'POST',$path,$body);
     if(!function_exists('curl_init'))throw new \RuntimeException('cURL missing');
     $ch=curl_init($destination);
-    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$body,
+    $curlOptions=[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$body,
      CURLOPT_HTTPHEADER=>['Content-Type: application/json','X-Iluma-Timestamp: '.$time,'X-Iluma-Nonce: '.$nonce,'X-Iluma-Signature: '.$sig,'X-Iluma-Event-Id: '.$event['id']],
      CURLOPT_TIMEOUT=>12,CURLOPT_CONNECTTIMEOUT=>4,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_SSL_VERIFYPEER=>true,CURLOPT_SSL_VERIFYHOST=>2,
-     CURLOPT_PROTOCOLS=>CURLPROTO_HTTPS,CURLOPT_REDIR_PROTOCOLS=>0]);
+     CURLOPT_PROTOCOLS=>CURLPROTO_HTTPS,CURLOPT_REDIR_PROTOCOLS=>0];
+    if(($app['slug']??null)!=='iradiosgr')
+     $curlOptions[CURLOPT_RESOLVE]=ApplicationRouting::publicDnsPin($destination);
+    curl_setopt_array($ch,$curlOptions);
     $result=curl_exec($ch);$code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
     if($result===false || $code<200 || $code>=300) throw new \RuntimeException('Webhook delivery HTTP '.$code);
     $status='delivered';$note='acknowledged';

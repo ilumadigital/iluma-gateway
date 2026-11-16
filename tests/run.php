@@ -187,6 +187,36 @@ check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result','IL'.st
 check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result','IL'.str_repeat('D',24),'B-PREM',true) ===
  'https://stage.iradios.gr/backoffice/pro-features?gateway_return=result&order=IL'.str_repeat('D',24),
  'New iRadios Production broadcaster returns to stage by immutable payment marker');
+// A production API credential alone must not enable routing or charge real cards.
+$stageProdPrevious=[];
+foreach(['APP_ENV','PRODUCTION_ENABLED','IRADIOS_STAGE_PRODUCTION_ENABLED',
+  'IRADIOS_STAGE_PRODUCTION_WEBHOOK'] as $flag)$stageProdPrevious[$flag]=getenv($flag);
+putenv('APP_ENV=production');putenv('PRODUCTION_ENABLED=1');
+putenv('IRADIOS_STAGE_PRODUCTION_ENABLED=0');
+check(!\Iluma\Gateway\Config::stageProductionAllowed(),
+ 'New iRadios production is disabled until its explicit route flag is approved');
+putenv('IRADIOS_STAGE_PRODUCTION_ENABLED=1');
+check(\Iluma\Gateway\Config::stageProductionAllowed(),
+ 'Explicit commercial iRadios production gate requires production runtime');
+putenv('IRADIOS_STAGE_PRODUCTION_WEBHOOK=https://stage.iradios.gr/api/gateway/webhook');
+check(\Iluma\Gateway\Config::stagePaymentWebhook()==='https://stage.iradios.gr/api/gateway/webhook',
+ 'New iRadios commercial HMAC outbox is pinned to stage origin');
+putenv('IRADIOS_STAGE_PRODUCTION_WEBHOOK=https://play.iradios.gr/api/gateway/webhook');
+try{\Iluma\Gateway\Config::stagePaymentWebhook();$badRouteAccepted=true;}
+catch(\RuntimeException){$badRouteAccepted=false;}
+check(!$badRouteAccepted,'The legacy origin can never replace the new stage commercial callback');
+foreach($stageProdPrevious as $flag=>$value){
+ if($value===false)putenv($flag);else putenv($flag.'='.$value);
+}
+$commercialWorkerSource=file_get_contents(dirname(__DIR__).'/src/Worker.php');
+$commercialPaymentsSource=file_get_contents(dirname(__DIR__).'/src/Payments.php');
+$commercialSql=file_get_contents(dirname(__DIR__).'/database/migrations/20261116_iradios_stage_production_routing.sql');
+check(str_contains($commercialWorkerSource,'origin_credential_id')&&
+ str_contains($commercialWorkerSource,'Config::stagePaymentWebhook()')&&
+ str_contains($commercialPaymentsSource,'iradios_stage_routed')&&
+ str_contains($commercialSql,'DEFAULT 0'),
+ 'New payment records pin the original credential; all historical production records retain their route');
+
 foreach(['https://evil.test/','/checkout/unexpected'] as $invalidPath){
  try{\Iluma\Gateway\CheckoutReturn::url('staging',$invalidPath,'IL'.str_repeat('A',24));$returnAccepted=true;}
  catch(\InvalidArgumentException){$returnAccepted=false;}

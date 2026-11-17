@@ -15,8 +15,9 @@ Gateway has its OWN Compose project (iluma_gateway), independent of iRadios.
 Host Nginx routes gateway.iluma.gr to 127.0.0.1:5561; an internal web
 container routes explicit endpoints to PHP-FPM. MySQL 8.4 is accessible only
 inside the Gateway Docker network, with three distinct tenant databases:
-iluma_registry, iluma_staging, iluma_production. Production remains disabled
-and its application SQL user is SELECT-only.
+iluma_registry, iluma_staging, iluma_production. Production remains disabled by default; its application SQL user has
+only SELECT/INSERT/UPDATE/DELETE and no DDL. Production billing still needs
+explicit merchant approval and a scheduled production worker.
 
 Application PHP is copied into immutable images, read-only container rootfs
 and cap_drop ALL. PHP and worker run as UID/GID 33. Neither has a writable
@@ -77,7 +78,8 @@ Run:
 The preparation creates a new root MySQL secret and three NEW distinct
 SQL passwords, keeping all old encrypted content decryptable through
 the preserved master key. No API/Nexi key is regenerated. Only the staging
-account gets staging DDL permissions; production remains read-only.
+account gets staging DDL permissions; the production app account has DML
+permissions but no CREATE/ALTER/DROP.
 The worker is not started.
 
 ## Phase 3: inspect and import all three SQL archives

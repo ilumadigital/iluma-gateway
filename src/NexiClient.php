@@ -139,7 +139,9 @@ final class NexiClient {
   if(!preg_match('/^IL[A-F0-9]{24}$/D',$orderId)||
      !preg_match('/^ILM(?:[A-F0-9]{15}|[A-F0-9]{24})$/D',$contractId)||
      !preg_match('/^[A-Z0-9]{1,27}$/D',$customerId)||
-     !in_array($amountCents,array_values(BroadcasterMandates::PRICE),true))
+     !in_array($amountCents,array_merge(
+       array_values(BroadcasterMandates::PRICE),
+       array_values(BroadcasterMandates::LEGACY_PRICE)),true))
    throw new \InvalidArgumentException('Invalid broadcaster MIT parameters');
   return $this->request('POST','/api/v1/orders/mit',[
    'captureType'=>'IMPLICIT','contractId'=>$contractId,

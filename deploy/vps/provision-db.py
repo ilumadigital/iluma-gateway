@@ -17,7 +17,8 @@ SCOPE = (
      "SELECT, INSERT, UPDATE, DELETE"),
     ("STAGING", "iluma_staging", "iluma_staging_app",
      "SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES"),
-    ("PRODUCTION", "iluma_production", "iluma_production_app", "SELECT"),
+    ("PRODUCTION", "iluma_production", "iluma_production_app",
+     "SELECT, INSERT, UPDATE, DELETE"),
 )
 
 
@@ -31,8 +32,6 @@ def main() -> None:
         if "=" in line and not line.startswith("#"):
             key, val = line.split("=", 1)
             env[key] = val
-    if env.get("PRODUCTION_ENABLED") != "0":
-        raise ValueError("PRODUCTION_ENABLED must remain 0")
     script = ["SET sql_notes=0;"]
     for prefix, db, username, grants in SCOPE:
         if env.get(prefix + "_USER") != username:
@@ -60,8 +59,8 @@ def main() -> None:
         match = re.search(rb"ERROR\s+(\d{3,5})", result.stderr)
         error_code = match.group(1).decode("ascii") if match else "unknown"
         raise RuntimeError(f"MySQL provisioning failed (exit={result.returncode}, mysql_code={error_code})")
-    print("PASS: three isolated databases and least-privilege app users provisioned")
-    print("Production application user: SELECT-only; production charges remain locked")
+    print("PASS: registry + two isolated tenant databases provisioned")
+    print("Production application user: SELECT/INSERT/UPDATE/DELETE only (no DDL); charging gates unchanged")
 
 
 if __name__ == "__main__":

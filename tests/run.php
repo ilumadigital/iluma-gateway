@@ -2,6 +2,10 @@
 declare(strict_types=1);
 require dirname(__DIR__).'/src/bootstrap.php';
 use Iluma\Gateway\{Security,PaymentState,Config,NexiClient,EnvLoader,AdminContext};
+// Offline tests never inherit operator production/MIT rollout flags.
+foreach(['APP_ENV'=>'staging','PRODUCTION_ENABLED'=>'0','IRADIOS_STAGE_PRODUCTION_ENABLED'=>'0',
+ 'MIT_PRODUCTION_EXECUTION_ENABLED'=>'0','MIT_PRODUCTION_UAT_APPROVED'=>'0',
+ 'BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED'=>'0','BROADCASTER_MIT_PRODUCTION_UAT_APPROVED'=>'0'] as $name=>$value)putenv($name.'='.$value);
 putenv('MASTER_KEY_B64='.base64_encode(str_repeat('K',32)));
 $tests=0;
 function check(bool $ok,string $name):void {global $tests;$tests++;if(!$ok){fwrite(STDERR,"FAIL $name\n");exit(1);}echo "PASS $name\n";}

@@ -203,16 +203,18 @@ def migrate_tables(tenant: str) -> None:
 
 def reconcile_catalog(tenant: str, application_id: int) -> None:
     existing = catalog(tenant, application_id)
+    # Validate ALL existing scoped prices before the first INSERT. In particular,
+    # legacy broadcaster prices are not automatically rewritten in financial data.
     for sku, price in PRICES.items():
         current = existing.get(sku)
-        if current == (price, "EUR", 1):
+        if current is not None and current != (price, "EUR", 1):
+            raise ValueError(f"Unexpected catalog drift for {tenant}/{sku}; no writes")
+    for sku, price in PRICES.items():
+        if sku in existing:
             continue
-        if current is None:
-            # SKU is a fixed literal from PRICES, never external input.
-            sql("INSERT INTO products(application_id,sku,title,amount_cents,currency,enabled) "
-                f"VALUES({application_id},'{sku}','{sku}',{price},'EUR',1);", tenant)
-        else:
-            raise ValueError(f"Unexpected price drift for {tenant}/{sku}")
+        # SKU is a fixed reviewed literal, never external input.
+        sql("INSERT INTO products(application_id,sku,title,amount_cents,currency,enabled) "
+            f"VALUES({application_id},'{sku}','{sku}',{price},'EUR',1);", tenant)
 
 
 def main() -> None:

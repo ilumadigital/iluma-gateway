@@ -221,9 +221,34 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true",
                         help="Backup then align table structures and approved SKU prices")
+    parser.add_argument("--verified-offsite-restore", action="store_true",
+                        help="Confirm encrypted off-host backup and isolated restore of current data")
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise ValueError("Run via sudo on Gateway VPS; private root MySQL socket required")
+    if args.verified_offsite_restore and not args.apply:
+        raise ValueError("Restore confirmation is only valid with --apply")
+    if args.apply:
+        if not args.verified_offsite_restore:
+            raise ValueError("STOP: verified encrypted off-host backup and isolated restore required")
+        private = Path("/etc/iluma-gateway/iluma-gateway.env")
+        if not private.is_file() or private.is_symlink() or private.stat().st_mode & 0o077:
+            raise ValueError("STOP: missing or insecure private runtime environment")
+        flags = {
+            "PRODUCTION_ENABLED", "IRADIOS_STAGE_PRODUCTION_ENABLED",
+            "MIT_PRODUCTION_EXECUTION_ENABLED", "MIT_PRODUCTION_UAT_APPROVED",
+            "BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED",
+            "BROADCASTER_MIT_PRODUCTION_UAT_APPROVED",
+        }
+        values = {}
+        for raw in private.read_text().splitlines():
+            if "=" not in raw or raw.lstrip().startswith("#"):
+                continue
+            key, value = raw.split("=", 1)
+            if key.strip() in flags:
+                values[key.strip()] = value.strip().strip(chr(34)).strip(chr(39))
+        if any(values.get(flag, "0") not in ("", "0") for flag in flags):
+            raise ValueError("STOP: production checkout/MIT must stay locked during DDL")
     application = sql(
         "SELECT id FROM iluma_registry.applications WHERE slug='iradiosgr' LIMIT 2"
     )

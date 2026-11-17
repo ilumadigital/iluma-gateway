@@ -57,7 +57,7 @@ All audited production financial tables are empty, routing columns already
 exist in production, and the production app has required DML without DDL.
 
 **Do not run both bootstrap scripts.** For this audited two-tenant drift,
-choose only `deploy/vps/align-tenants.py --apply` after checking its read-only
+choose only `deploy/vps/align-tenants.py --apply --verified-offsite-restore` after checking its read-only
 report and obtaining approval. It adds missing approved tables/columns/indexes
 to both isolated tenants and missing scoped SKUs, never copies financial rows.
 Legacy or unexpected catalog prices MUST STOP; no automatic price updates.
@@ -67,7 +67,7 @@ cd /srv/iluma-gateway/app
 sudo python3 deploy/vps/align-tenants.py   # read-only: currently expected to report drift
 # STOP HERE UNTIL off-host encrypted backups + fresh isolated MySQL restore are verified.
 # After explicit operator approval only:
-# sudo python3 deploy/vps/align-tenants.py --apply
+# sudo python3 deploy/vps/align-tenants.py --apply --verified-offsite-restore
 ```
 
 The apply script creates fresh LOCAL backups but does NOT itself prove off-host

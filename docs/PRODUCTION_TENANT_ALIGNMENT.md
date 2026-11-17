@@ -13,7 +13,7 @@ tables inspected in production contain zero rows. The iRadios staging catalog
 has current approved prices but lacks L-WINBACK-199.
 
 The selected schema update is the reviewed `align-tenants.py` against both
-tenants. Audit without flags first; `--apply` is an explicit DDL/DML operation,
+tenants. Audit without flags first; `--apply --verified-offsite-restore` is an explicit DDL/DML operation,
 permitted ONLY after verified encrypted off-host backups, isolated MySQL restore
 of the current snapshot, approved diff and maintenance window. It creates a
 new local backup, but does NOT substitute for an off-host restore drill.

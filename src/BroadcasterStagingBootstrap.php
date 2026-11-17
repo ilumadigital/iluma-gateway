@@ -85,6 +85,7 @@ final class BroadcasterStagingBootstrap {
   if(!self::isolated())throw new HttpError(503,'BROADCASTER_STAGING_DATABASE_NOT_ISOLATED');
   $app=(int)$credential['application_id'];
   if($credential['environment']==='production'){
+   ProductionBillingReadiness::assertReady($credential);
    // Live product catalog and tables must be manually audited first.
    if(!self::ready(Db::get('production'),$app))
     throw new HttpError(503,'BROADCASTER_PRODUCTION_SCHEMA_OR_CATALOG_NOT_READY');

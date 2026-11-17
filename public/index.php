@@ -58,6 +58,9 @@ try {
   $raw=file_get_contents('php://input');$headers=Security::headers();
   $credential=Security::credentialFromHeaders($headers,$raw,$method,$path);
   $environment=$credential['environment'];$body=$method==='POST'?Security::jsonRequest($raw):[];
+  if($method==='GET' && $path==='/api/v1/billing/readiness'){
+   Http::respond(\Iluma\Gateway\ProductionBillingReadiness::inspect($credential));
+  }
   if($method==='POST' && $path==='/api/v1/payments/checkout'){
    $result=Payments::checkout($credential,$body,$headers['idempotency-key']??'');
    Http::respond($result,$result['status']==='redirect'?201:202);

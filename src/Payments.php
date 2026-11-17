@@ -14,6 +14,7 @@ final class Payments {
   $toStage=$env==='production'&&($credential['slug']??'')==='iradiosgr';
   if($toStage&&!Config::stageProductionAllowed())
    throw new HttpError(503,'IRADIOS_STAGE_PRODUCTION_DISABLED');
+  if($toStage)ProductionBillingReadiness::assertReady($credential);
   $external=(string)($request['customer_id']??'');$sku=(string)($request['product_sku']??'');
   $email=(string)($request['email']??'');$name=(string)($request['name']??'');
   if($toStage&&!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))

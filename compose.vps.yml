@@ -116,7 +116,7 @@ services:
   # Do not schedule this until both tenants have been aligned and verified.
   worker-production:
     <<: *php-runtime
-    profiles: ["worker"]
+    profiles: ["worker-production"]
     volumes:
       - type: bind
         source: /etc/iluma-gateway/iluma-gateway.env
@@ -125,12 +125,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: /etc/iluma-gateway/worker.enabled
-        target: /etc/iluma-gateway/worker.enabled
+        source: /etc/iluma-gateway/production-worker.enabled
+        target: /etc/iluma-gateway/production-worker.enabled
         read_only: true
         bind:
           create_host_path: false
-    command: ["sh", "-ec", "test -f /etc/iluma-gateway/worker.enabled || { echo 'STOP: cutover approval flag missing' >&2; exit 78; }; exec php bin/work.php production"]
+    command: ["sh", "-ec", "test -f /etc/iluma-gateway/production-worker.enabled || { echo 'STOP: cutover approval flag missing' >&2; exit 78; }; exec php bin/work.php production --no-charge"]
     working_dir: /srv/iluma-gateway/app
     restart: "no"
     mem_limit: 256m

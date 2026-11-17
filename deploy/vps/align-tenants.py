@@ -173,8 +173,6 @@ def preflight(application_id: int) -> None:
             value = existing[sku]
             if value == (expected, "EUR", 1):
                 continue
-            if value == (LEGACY.get(sku), "EUR", 1):
-                continue
             raise ValueError(
                 f"{tenant}: {sku} differs from approved catalog; "
                 "stop and review historical price manually"
@@ -213,11 +211,6 @@ def reconcile_catalog(tenant: str, application_id: int) -> None:
             # SKU is a fixed literal from PRICES, never external input.
             sql("INSERT INTO products(application_id,sku,title,amount_cents,currency,enabled) "
                 f"VALUES({application_id},'{sku}','{sku}',{price},'EUR',1);", tenant)
-        elif current == (LEGACY.get(sku), "EUR", 1):
-            old = LEGACY[sku]
-            sql("UPDATE products SET amount_cents="
-                f"{price} WHERE application_id={application_id} AND sku='{sku}' "
-                f"AND amount_cents={old} AND currency='EUR' AND enabled=1;", tenant)
         else:
             raise ValueError(f"Unexpected price drift for {tenant}/{sku}")
 

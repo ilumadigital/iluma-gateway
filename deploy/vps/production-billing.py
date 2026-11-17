@@ -95,9 +95,6 @@ def read_config():
     expected = {
         "PRODUCTION_DSN": "mysql:host=db;port=3306;dbname=iluma_production;charset=utf8mb4",
         "PRODUCTION_USER": USER,
-        "APP_ENV": "production", "PRODUCTION_ENABLED": "1",
-        "IRADIOS_STAGE_PRODUCTION_ENABLED": "1",
-        "IRADIOS_STAGE_PRODUCTION_WEBHOOK": "https://stage.iradios.gr/api/gateway/webhook",
     }
     for key, value in expected.items():
         if env.get(key) != value:
@@ -109,6 +106,7 @@ def read_config():
         if env.get(key, "0") not in ("", "0"):
             raise ValueError("Initial restoration requires MIT disabled: " + key)
 
+    return env
 
 def table_names(database=DB):
     return {r[0] for r in rows("SHOW TABLES", database)}
@@ -335,7 +333,11 @@ def main():
         raise ValueError("Run with sudo")
     if args.grant_runtime_dml and not args.apply:
         raise ValueError("--grant-runtime-dml requires --apply")
-    read_config()
+    settings = read_config()
+    # The first-time migration runs with checkout locked. Read-only audit is allowed in either state.
+    if args.apply and (settings.get("PRODUCTION_ENABLED", "0") != "0" or
+                       settings.get("IRADIOS_STAGE_PRODUCTION_ENABLED", "0") != "0"):
+        raise ValueError("Production checkout must stay locked during bootstrap")
     manifest = json.loads(MANIFEST.read_text())
     if manifest["database"] != DB or manifest["application"] != "iradiosgr":
         raise ValueError("Unexpected manifest scope")

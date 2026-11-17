@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 
 root = Path(__file__).resolve().parents[1]
-command = ["docker", "compose", "--profile", "worker", "-f", str(root / "compose.vps.yml"),
+command = ["docker", "compose", "--profile", "worker", "--profile", "worker-production", "-f", str(root / "compose.vps.yml"),
            "config", "--format", "json"]
 result = subprocess.run(command, check=True, capture_output=True, text=True, cwd=root)
 config = json.loads(result.stdout)
@@ -15,11 +15,9 @@ assert set(services) == {"db", "php", "web", "worker", "worker-production"}
 assert not services["db"].get("ports"), "MySQL must have no host ports"
 assert not services["php"].get("ports"), "PHP-FPM must have no host ports"
 assert not services["worker"].get("ports"), "Worker must have no host ports"
-assert services["worker"].get("profiles") == ["worker"], "Staging worker must be off by default"
-assert services["worker-production"].get("profiles") == ["worker"], "Production worker must be off by default"
+assert services["worker"].get("profiles") == ["worker"], "Worker must be off by default"
 assert services["php"].get("read_only") is True
 assert services["worker"].get("read_only") is True
-assert services["worker-production"].get("read_only") is True
 for name in ("php", "worker", "worker-production"):
     assert "ALL" in services[name].get("cap_drop", [])
     mounts = services[name]["volumes"]
@@ -32,4 +30,14 @@ assert str(ports[0]["published"]) == "5561"
 assert int(ports[0]["target"]) == 8080
 assert not any("iradios_stage" in network for network in config.get("networks", {}))
 assert "gateway_mysql_data" in config["volumes"]
-print("PASS: isolated Gateway topology and separately gated staging/production workers")
+print("PASS: isolated Gateway topology, immutable PHP and opt-in staging worker")
+
+production = services["worker-production"]
+assert production.get("profiles") == ["worker-production"]
+assert production.get("read_only") is True
+assert not production.get("ports")
+assert production["command"][-1].endswith("exec php bin/work.php production --no-charge")
+assert any(x.get("source") == "/etc/iluma-gateway/production-worker.enabled"
+           and x.get("read_only") is True for x in production["volumes"])
+assert services["worker"]["command"][-1].endswith("php bin/work.php staging")
+print("PASS: production reconciliation is separately gated and cannot run chargeDue")

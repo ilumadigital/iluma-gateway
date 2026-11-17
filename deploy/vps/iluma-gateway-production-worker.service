@@ -1,14 +1,14 @@
 [Unit]
-Description=ILUMA Gateway production payment outbox/reconciliation (one shot)
+Description=ILUMA Gateway production outbox/reconciliation (automatic charges disabled)
 Requires=docker.service
 After=docker.service
 ConditionPathExists=/etc/iluma-gateway/iluma-gateway.env
-ConditionPathExists=/etc/iluma-gateway/worker.enabled
+ConditionPathExists=/etc/iluma-gateway/production-worker.enabled
 
 [Service]
 Type=oneshot
 WorkingDirectory=/srv/iluma-gateway/app
-ExecStart=/usr/bin/flock -n /run/lock/iluma-gateway-production-worker.lock /usr/bin/docker compose -f /srv/iluma-gateway/app/compose.vps.yml run --rm -T --no-deps worker-production
+ExecStart=/usr/bin/flock -n /run/lock/iluma-gateway-production-worker.lock /usr/bin/docker compose -f /srv/iluma-gateway/app/compose.vps.yml --profile worker-production run --rm -T --no-deps worker-production
 TimeoutStartSec=180
 User=root
 Group=root

@@ -1,9 +1,11 @@
 [Unit]
-Description=ILUMA Gateway production payment reconciliation and webhook worker
+Description=Run ILUMA Gateway production outbox/reconciliation each minute
+
 [Timer]
-OnCalendar=*-*-* *:*:30
-AccuracySec=1s
-Persistent=false
+OnBootSec=60s
+OnUnitInactiveSec=60s
+AccuracySec=5s
 Unit=iluma-gateway-production-worker.service
+
 [Install]
 WantedBy=timers.target

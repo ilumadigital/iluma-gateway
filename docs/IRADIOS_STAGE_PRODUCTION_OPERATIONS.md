@@ -4,28 +4,32 @@ The legacy play.iradios.gr Stripe application is a different system and is
 not updated by this project. The new iRadios may use Nexi Production via
 Gateway while APP_ENV remains staging in its isolated VPS.
 
-## Mandatory Gateway release order
+## Mandatory Gateway release order (authoritative 2026-11-17 VPS)
 
-1. Production merchant approval and QA sign-off; APP_ENV=production and
-   PRODUCTION_ENABLED=1 on Gateway, including production worker scheduling.
-2. Verified off-host production database backup and restoration drill.
-3. Apply database/migrations/20261116_iradios_stage_production_routing.sql
-   manually to iluma_production ONLY (not staging).
-4. Prepare the production tenant's broadcaster_mandates, broadcaster_cycles,
-   broadcaster_boost_scopes, advertising_budget_scopes, recurring_mandates,
-   recurring_cycles, saved_card_agreements and winback_claims tables using
-   reviewed, adapted migrations. The Gateway NEVER auto-DDLs production.
-5. Provision an independent iradiosgr PRODUCTION app credential and audit the
-   production product catalog: L-PREM 399 cents, L-WINBACK-199 199 cents,
-   all broadcaster and Boost SKUs, ADV-BUDGET sentinel 100 cents EUR.
-6. Configure Gateway PRIVATE environment (do not add secrets to Git):
-   ```dotenv
-   IRADIOS_STAGE_PRODUCTION_ENABLED=1
-   IRADIOS_STAGE_PRODUCTION_WEBHOOK=https://stage.iradios.gr/api/gateway/webhook
-   ```
-   Keep IRADIOS_PRODUCTION_WEBHOOK untouched for unrelated/old payments.
-7. Deploy Gateway manually from Git via Hostinger hPanel. Verify production
-   Nexi provider and the signed worker/outbox end to end before live charges.
+1. Review and merge the single unified Gateway PR after passing combined CI.
+   Do not separately merge the conflicting production-worker changes in #28/#30.
+2. Deploy to the confirmed VPS origin at 185.230.64.89 with the reviewed
+   SHA, after checking the host reverse proxy. Do not touch legacy play.iradios.gr.
+3. Run production billing + tenant parity audits READ-ONLY while checkout remains
+   locked. The runtime production SQL account already has DML without DDL.
+4. Verify complete encrypted off-host backups AND isolated restore of the current
+   three-database snapshot before any SQL write.
+5. Select ONE reviewed migration according to actual drift; for the audited
+   state, prefer tenant alignment, not two overlapping bootstrap tools.
+   No existing payment/customer/mandate/card rows may be copied or deleted.
+6. Verify exact scoped iRadios catalog, HMAC credential, merchant/terminal and
+   Nexi production endpoint. Only after these prerequisites, configure private
+   Gateway production flags with all MIT execution/UAT flags still 0.
+7. Deploy iRadios #153 to stage.iradios.gr with APP_ENV=staging and Mailpit
+   unchanged; require signed authenticated READY.
+8. Configure the independent production webhook/reconciliation worker as
+   `php bin/work.php production --no-charge`; verify exactly one production
+   timer. Keep the existing staging worker.
+9. Real payment UAT requires one explicit operator approval per charge and
+   Nexi/Gateway/webhook/iRadios entitlement correlation. MIT requires separate
+   consent, due-cycle checks and an independent UAT authorization.
+
+Canonical runbook: `docs/PRODUCTION_BILLING_RECOVERY.md`.
 
 ## Transaction safety and reversibility
 

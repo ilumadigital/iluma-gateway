@@ -20,7 +20,7 @@ Gateway runs on the VPS. hPanel Git redeploy is retired for this installation.
 
 ## 1. Deploy reviewed code, before any database change
 
-Merge the Gateway recovery PR into main and the iRadios PR into staging.
+Merge only the unified, reviewed Gateway release after CI passes; merge iRadios #153 into staging afterward.
 On the VPS, fast-forward the Gateway checkout to the reviewed main SHA.
 Do not overwrite the local iluma-g-dev.sh or unreviewed local changes.
 
@@ -33,9 +33,10 @@ network, validates mounted configuration in the new image, recreates PHP/web
 and compares their running image IDs with the images just built. It does not
 restart MySQL, change ENV, migrate, or start any worker.
 
-## 2. Audit the production tenant
+## 2. Audit both tenants and production prerequisites
 
-    sudo python3 deploy/vps/production-billing.py
+    sudo python3 deploy/vps/production-billing.py  # read-only even while production locked
+    sudo python3 deploy/vps/align-tenants.py      # read-only tenant parity
 
 Exit 1 with a JSON plan means prerequisites are missing. Review missing_tables,
 missing_columns, missing_products, missing_dml, occupied_tables and blockers.
@@ -46,31 +47,44 @@ This bootstrap is for the pre-launch production database observed during the
 incident. If any financial/customer table contains records, STOP and prepare
 a separate reviewed upgrade. Do not delete those records to pass the guard.
 
-## 3. Apply the reviewed plan
+## 3. Choose exactly ONE migration path after off-host backup and restore drill
 
-Preserve the existing database backups and original encryption key securely.
-The command below creates a root-only compressed production backup, verifies
-the bytes written, restores it into a newly named temporary database, compares
-schema and every table's row count, and removes only that temporary database.
-A failed backup/restore/source-consistency check stops before production DDL.
-Copy the backup and its reported SHA256 off the VPS through the normal secure
-backup process. Gzip is not encryption.
+The 2026-11-17 VPS audit established: registry 6 tables, staging 22, production
+15. Production lacks eight optional billing tables; staging lacks winback_claims.
+The iradiosgr staging catalog is missing L-WINBACK-199; a separate
+iluma-internal ILUMA-TEST-100 production product must be preserved.
+All audited production financial tables are empty, routing columns already
+exist in production, and the production app has required DML without DDL.
 
-    sudo python3 deploy/vps/production-billing.py --apply --grant-runtime-dml
+**Do not run both bootstrap scripts.** For this audited two-tenant drift,
+choose only `deploy/vps/align-tenants.py --apply` after checking its read-only
+report and obtaining approval. It adds missing approved tables/columns/indexes
+to both isolated tenants and missing scoped SKUs, never copies financial rows.
+Legacy or unexpected catalog prices MUST STOP; no automatic price updates.
 
-The DML flag explicitly authorizes SELECT/INSERT/UPDATE/DELETE only on
-iluma_production.* for the existing iluma_production_app@% account.
-It does not grant runtime CREATE/ALTER/DROP or modify passwords.
-It inserts missing catalog entries; it never updates an existing price.
-Schema changes are additive. MySQL DDL is not transactional: if interrupted,
-rerun the audit and review the remaining plan; never attempt a blanket rollback.
-An already-ready installation is a no-op.
+```bash
+cd /srv/iluma-gateway/app
+sudo python3 deploy/vps/align-tenants.py   # read-only: currently expected to report drift
+# STOP HERE UNTIL off-host encrypted backups + fresh isolated MySQL restore are verified.
+# After explicit operator approval only:
+# sudo python3 deploy/vps/align-tenants.py --apply
+```
 
-Expected catalog (EUR, cents): L-PREM 399; L-WINBACK-199 199; B-PREM 9900;
-ADD-DSP 2790; ADD-ADS 890; ADD-AN 690; the ten Boost prices from
-BroadcasterBoost::PRICE; ADV-BUDGET sentinel 100 (the actual amount is a
-validated server quote). Calendar-month billing remains in existing mandate
-logic, not an invented fixed 30-day product period.
+The apply script creates fresh LOCAL backups but does NOT itself prove off-host
+recovery or isolated restore. The operator must independently verify both for
+the current snapshot before any write. Recheck schema, indexes, foreign keys,
+SKU scope, historical row counts and production DML afterward. On partial
+MySQL DDL failure, stop and audit: do not blindly replay or roll back SQL.
+
+The alternative production-only `production-billing.py --apply` has an
+integrated isolated restore verification but is NOT the selected operation
+here because it does not repair the missing staging winback table. It must
+not be run in addition to the tenant alignment script.
+
+Expected iRadios product catalog: 17 SKUs, all EUR and enabled, with
+L-WINBACK-199=199 cents, B-PREM=9900, ADD-DSP=2790, ADD-ADS=890,
+ADD-AN=690. ADV-BUDGET=100 is the catalog sentinel for separately
+validated quotes, NOT a universal 1-euro campaign charge.
 
 ## 4. Deploy iRadios and verify its actual credential pair
 
@@ -79,7 +93,7 @@ logic, not an invented fixed 30-day product period.
     sudo docker exec iradios_stage-backend-1 node scripts/gateway-readiness.js
 
 Require AUTHENTICATED_GATEWAY: OK, PRODUCTION_READINESS: READY and every check
-OK. Do not print ENV, request headers, API keys or secrets. A 401/403 requires
+OK. This confirms signed Gateway prerequisites, NOT merchant/terminal authorization. Do not print ENV, request headers, API keys or secrets. A 401/403 requires
 credential/configuration investigation, not regenerating credentials blindly.
 
 Reload the Broadcaster billing screen without clicking checkout. The four

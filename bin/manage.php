@@ -20,7 +20,9 @@ if($command==='doctor-http'){
   $checks['PHP_EXT_'.strtoupper($ext)]=extension_loaded($ext)?'OK':'FAILED';
  $run('GATEWAY_HOST',static fn():bool=>
   \Iluma\Gateway\Config::get('GATEWAY_HOST')==='gateway.iluma.gr');
- $run('PRODUCTION_LOCK',static fn():bool=>!\Iluma\Gateway\Config::liveAllowed());
+ $run('PRODUCTION_MODE_CONSISTENT',static fn():bool=>
+   (\Iluma\Gateway\Config::get('PRODUCTION_ENABLED')==='1')===
+   (\Iluma\Gateway\Config::get('APP_ENV')==='production'));
  $run('BROADCASTER_MIT_LOCK',static fn():bool=>
   \Iluma\Gateway\Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')!=='1'
   ||\Iluma\Gateway\Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')!=='1');

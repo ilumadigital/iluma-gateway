@@ -40,9 +40,21 @@ final class RecurringAdmin {
    ' προς επαλήθευση · '.(int)$stats['upcoming'].
    ' ανανεώσεις 7ημέρου. <a href="/ilm-admin/?p=subscriptions">Συνδρομές Nexi</a></p>';
  }
- public static function index(PDO $db,PDO $registry,string $query):string{
+ /** Display-only capability check, independent of the contract's active state. */
+ public static function executionEnabled(string $environment):bool{
+  if($environment==='production')return Config::stageProductionAllowed()
+   &&Config::get('MIT_PRODUCTION_EXECUTION_ENABLED')==='1'
+   &&Config::get('MIT_PRODUCTION_UAT_APPROVED')==='1';
+  if($environment==='staging')return Config::get('APP_ENV')==='staging'
+   &&Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'
+   &&Config::get('MIT_SANDBOX_UAT_APPROVED')==='1';
+  throw new \InvalidArgumentException('Environment');
+ }
+ public static function index(PDO $db,PDO $registry,string $query,string $environment='staging'):string{
+  if(!in_array($environment,['staging','production'],true))
+   throw new \InvalidArgumentException('Environment');
   if(!self::ready($db))
-   return '<p>Δεν υπάρχει η staging migration recurring_mandates.</p>';
+   return '<p>Δεν υπάρχει το schema recurring_mandates στο επιλεγμένο περιβάλλον.</p>';
   $search=substr(trim($query),0,150);
   $where=$search!==''?' WHERE (c.email LIKE ? OR c.name LIKE ? OR m.id=?)':'';
   $args=$search!==''?['%'.$search.'%','%'.$search.'%',$search]:[];
@@ -55,12 +67,13 @@ final class RecurringAdmin {
     JOIN payments p ON p.id=m.initial_payment_id
     JOIN products pr ON pr.id=p.product_id".$where."
     ORDER BY m.created_at DESC LIMIT 100",$args);
-  $enabled=Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'
-   && Config::get('MIT_SANDBOX_UAT_APPROVED')==='1'
-   && Config::get('APP_ENV')==='staging';
+  $enabled=self::executionEnabled($environment);
+  $mode=$environment==='production'?'PRODUCTION':'SANDBOX';
   $html='<h2>Nexi MIT — Συνδρομές ακροατών</h2>';
-  $html.='<p>Εκτέλεση αυτόματων χρεώσεων: <b>'.
-   ($enabled?'ΕΝΕΡΓΗ (SANDBOX)':'ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΗ').'</b>. Το ενεργό contract δεν συνεπάγεται χρέωση όσο οι σημαίες UAT είναι 0.</p>';
+  $html.='<p>Εκτέλεση αυτόματων χρεώσεων ('.self::esc($mode).'): <b>'.
+   ($enabled?'ΕΝΕΡΓΟΠΟΙΗΜΕΝΗ':'ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΗ').'</b>. '.
+   'Η κατάσταση κάθε συμβολαίου προέρχεται από το MIT ledger. Η ενεργοποίηση των flags '.
+   'δεν επιβεβαιώνει ότι εκτελείται worker.</p>';
   $html.='<form method="get"><input type="hidden" name="p" value="subscriptions">'.
    '<input name="q" placeholder="Email / όνομα / Mandate ID" value="'.self::esc($search).'"><button>Αναζήτηση</button></form>';
   $html.='<table><tr><th>Πελάτης / εφαρμογή</th><th>Πλάνο</th><th>Μηνιαίο ποσό</th><th>MIT</th><th>Πληρωμένη έως</th><th>Επόμενη χρέωση</th><th></th></tr>';

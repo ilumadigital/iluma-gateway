@@ -275,7 +275,7 @@ try {
   $content.='<section class="dashboard-subscriptions"><div class="dashboard-section-head"><div><span class="dashboard-label">SUBSCRIPTIONS</span><h2>Παλαιότερες συνδρομές</h2></div><a class="dashboard-link" href="/ilm-admin/?p=subscriptions">Συνδρομές <span aria-hidden="true">↗</span></a></div><div class="dashboard-mini-grid">';
   foreach(['Ενεργές'=>(int)$sub['active'],'Ληξιπρόθεσμες'=>(int)$sub['past_due'],'Επόμενη χρέωση εντός 7 ημερών'=>(int)$sub['upcoming']] as $label=>$value)$content.='<div class="dashboard-mini-stat"><span>'.html($label).'</span><strong>'.(int)$value.'</strong></div>';
   $content.='</div></section>';
-  if($env==='staging')$content.=\Iluma\Gateway\RecurringAdmin::summary($db);
+  $content.=\Iluma\Gateway\RecurringAdmin::summary($db);
   $byProduct=Db::all($db,"SELECT pr.title,COUNT(*) paid_count,COALESCE(SUM(p.amount_cents),0) gross FROM payments p JOIN products pr ON pr.id=p.product_id WHERE p.status='paid' GROUP BY pr.id ORDER BY gross DESC LIMIT 15");
   $content.='<section class="dashboard-products"><div class="dashboard-section-head"><div><span class="dashboard-label">SERVICES</span><h2>Εισπράξεις ανά υπηρεσία</h2></div></div><div class="dashboard-table-scroll"><table><tr><th>Προϊόν</th><th>Επιτυχείς πληρωμές</th><th>Ακαθάριστο ποσό</th></tr>';
   foreach($byProduct as $r)$content.='<tr><td>'.html($r['title']).'</td><td>'.(int)$r['paid_count'].'</td><td>'.euro((int)$r['gross']).'</td></tr>';
@@ -292,7 +292,7 @@ try {
  } elseif($p==='payment'){
   $id=(string)($_GET['id']??'');$row=Db::one($db,'SELECT p.*,c.email,pr.title FROM payments p JOIN customers c ON c.id=p.customer_id JOIN products pr ON pr.id=p.product_id WHERE p.id=?',[$id]);if(!$row)throw new HttpError(404,'Not found');
   foreach(['Payment ID'=>$row['id'],'Nexi Order ID'=>$row['order_id'],'Nexi Operation ID'=>$row['operation_id']??'—','Περιβάλλον'=>$env,'Πελάτης'=>$row['email'],'Προϊόν'=>$row['title'],'Κατάσταση'=>$row['status'],'Ποσό'=>euro((int)$row['amount_cents'])] as $label=>$value)$content.='<p><b>'.html($label).':</b> '.html((string)$value).'</p>';
-  if($env==='staging'){
+  if(in_array($env,['staging','production'],true)){
    $mandateId=\Iluma\Gateway\RecurringAdmin::byPayment($db,$id)
     ??\Iluma\Gateway\BroadcasterRecurringAdmin::byPayment($db,$id);
    if($mandateId)$content.='<p><a href="/ilm-admin/?p=subscription&id='.html($mandateId).'">Προβολή συνδρομής Nexi MIT</a></p>';
@@ -321,11 +321,10 @@ try {
   $content.='<table><tr><th>Όνομα</th><th>Email</th><th>External User ID</th><th>Πληρωμές</th></tr>';
   foreach($rows as $r)$content.='<tr><td>'.html($r['name']).'</td><td>'.html($r['email']).'</td><td>'.html($r['external_user_id']).'</td><td>'.(int)$r['payments'].'</td></tr>';$content.='</table>';
  } elseif($p==='subscriptions'){
-  if($env==='staging'){
-   $content.=\Iluma\Gateway\RecurringAdmin::index($db,$reg,(string)($_GET['q']??''));
-   $content.=\Iluma\Gateway\BroadcasterRecurringAdmin::index($db,$reg,(string)($_GET['q']??''));
-  }
-  else $content.='<p>Η Nexi MIT recurring υπηρεσία δεν είναι ενεργή στο production.</p>';
+  // Both environments expose their own read-only mandate ledger; execution
+  // remains guarded independently by production UAT flags and the worker.
+  $content.=\Iluma\Gateway\RecurringAdmin::index($db,$reg,(string)($_GET['q']??''),$env);
+  $content.=\Iluma\Gateway\BroadcasterRecurringAdmin::index($db,$reg,(string)($_GET['q']??''),$env);
   $legacy=Db::all($db,"SELECT s.state,s.next_billing_at,c.email,pr.title
    FROM subscriptions s JOIN customers c ON c.id=s.customer_id
    JOIN products pr ON pr.id=s.product_id ORDER BY s.created_at DESC LIMIT 100");
@@ -336,7 +335,7 @@ try {
    $content.='</table>';
   }
  } elseif($p==='subscription'){
-  if($env!=='staging')throw new HttpError(404,'Not found');
+  if(!in_array($env,['staging','production'],true))throw new HttpError(404,'Not found');
   $subscriptionId=(string)($_GET['id']??'');
   $content.=\Iluma\Gateway\BroadcasterRecurringAdmin::hasMandate($db,$subscriptionId)
    ?\Iluma\Gateway\BroadcasterRecurringAdmin::detail($db,$reg,$subscriptionId)

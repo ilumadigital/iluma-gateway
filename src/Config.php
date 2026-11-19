@@ -26,5 +26,18 @@ final class Config {
    throw new \RuntimeException('Stage production webhook destination mismatch');
   return $expected;
  }
+ // Production routing is explicitly activated only after play is ready.
+ public static function playProductionAllowed():bool {
+  return self::liveAllowed()&&self::get('IRADIOS_PRODUCTION_PLAY_ENABLED')==='1';
+ }
+ public static function legacyStageDeliveryToPlay():bool {
+  return self::playProductionAllowed()&&self::get('IRADIOS_LEGACY_STAGE_TO_PLAY_ENABLED')==='1';
+ }
+ public static function playProductionWebhook():string {
+  $expected='https://play.iradios.gr/api/gateway/webhook';
+  if(self::must('IRADIOS_PRODUCTION_WEBHOOK')!==$expected)
+   throw new \RuntimeException('Production play webhook destination mismatch');
+  return $expected;
+ }
  public static function liveAllowed(): bool { return self::get('PRODUCTION_ENABLED')==='1' && self::get('APP_ENV')==='production'; }
 }

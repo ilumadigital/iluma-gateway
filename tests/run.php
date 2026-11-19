@@ -37,6 +37,32 @@ check(!\Iluma\Gateway\RecurringAdmin::executionEnabled('production')
 foreach($mitBefore as $key=>$value){
  if($value===false)putenv($key);else putenv($key.'='.$value);
 }
+// Production-to-play routing and legacy webhook forwarding are separate
+// default-OFF gates. These tests have no provider or database calls.
+check(!Config::playProductionAllowed()&&!Config::legacyStageDeliveryToPlay(),
+ 'Play production routing defaults OFF');
+putenv('APP_ENV=production');putenv('PRODUCTION_ENABLED=1');
+putenv('IRADIOS_PRODUCTION_PLAY_ENABLED=0');
+putenv('IRADIOS_LEGACY_STAGE_TO_PLAY_ENABLED=0');
+$order='IL'.str_repeat('A',24);
+check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result',$order,'L-PREM',true)
+  ==='https://stage.iradios.gr/premium?gateway_return=result&order='.$order,
+ 'Old production stage-routed return stays stage until explicitly migrated');
+putenv('IRADIOS_PRODUCTION_PLAY_ENABLED=1');
+check(Config::playProductionAllowed()&&!Config::legacyStageDeliveryToPlay(),
+ 'New play routing and legacy delivery toggles are independent');
+putenv('IRADIOS_PRODUCTION_WEBHOOK=https://play.iradios.gr/api/gateway/webhook');
+check(Config::playProductionWebhook()==='https://play.iradios.gr/api/gateway/webhook',
+ 'Play production webhook exact target');
+putenv('IRADIOS_LEGACY_STAGE_TO_PLAY_ENABLED=1');
+check(Config::legacyStageDeliveryToPlay()&&
+ \Iluma\Gateway\CheckoutReturn::url('production','/checkout/result',$order,'L-PREM',true)
+ ==='https://play.iradios.gr/premium?gateway_return=result&order='.$order,
+ 'Old real production return may move to play without new Nexi checkout');
+putenv('IRADIOS_LEGACY_STAGE_TO_PLAY_ENABLED=0');
+putenv('IRADIOS_PRODUCTION_PLAY_ENABLED=0');
+putenv('APP_ENV=staging');putenv('PRODUCTION_ENABLED=0');
+putenv('IRADIOS_PRODUCTION_WEBHOOK');
 $adminMitSource=file_get_contents(dirname(__DIR__).'/src/AdminApplication.php');
 check($adminMitSource!==false
  &&preg_match('/RecurringAdmin::index\([^;]+,\$env\);/', $adminMitSource)===1

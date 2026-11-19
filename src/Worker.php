@@ -60,9 +60,12 @@ final class Worker {
      ?Db::one(Db::get('registry'),"SELECT secret_box FROM application_credentials WHERE id=? AND application_id=? AND environment='production' AND enabled=1",[(int)$event['origin_credential_id'],$event['application_id']])
      :Db::one(Db::get('registry'),"SELECT secret_box FROM application_credentials WHERE application_id=? AND environment=? AND enabled=1 ORDER BY created_at DESC LIMIT 1",[$event['application_id'],$env]);
     if(!$credential)throw new \RuntimeException('No outbound credential');
-    $destination=$stageRouted?Config::stagePaymentWebhook():
+    // Old real payments retain their original pinned production signing key.
+    // Route their already-created events to play only after separate approval.
+    $destination=$stageRouted
+     ?(Config::legacyStageDeliveryToPlay()?Config::playProductionWebhook():Config::stagePaymentWebhook()):
       (($app['slug']??null)==='iradiosgr'
-       ?Config::webhook($env)
+       ?($env==='production'&&Config::playProductionAllowed()?Config::playProductionWebhook():Config::webhook($env))
        :ApplicationRouting::webhook($env,(int)$event['application_id']));
     $secret=Security::decrypt($credential['secret_box']);$body=(string)$event['body_json'];$time=(string)time();$nonce=Security::id();
     $path=(string)parse_url($destination,PHP_URL_PATH);

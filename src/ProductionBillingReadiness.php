@@ -13,9 +13,14 @@ final class ProductionBillingReadiness {
  public static function inspect(array $credential):array {
   if(($credential['environment']??'')!=='production'||($credential['slug']??'')!=='iradiosgr'||
      (int)($credential['application_id']??0)<1)throw new HttpError(403,'PRODUCTION_READINESS_SCOPE_INVALID');
-  $checks=['production_route'=>Config::stageProductionAllowed()];
-  try{$checks['stage_webhook']=Config::stagePaymentWebhook()==='https://stage.iradios.gr/api/gateway/webhook';}
+  $play=Config::playProductionAllowed();
+  $checks=['production_route'=>$play||Config::stageProductionAllowed()];
+  $checks['stage_webhook']=true;
+  if(!$play)try{$checks['stage_webhook']=Config::stagePaymentWebhook()==='https://stage.iradios.gr/api/gateway/webhook';}
   catch(\RuntimeException){$checks['stage_webhook']=false;}
+  $checks['production_play_webhook']=true;
+  if($play)try{$checks['production_play_webhook']=Config::playProductionWebhook()==='https://play.iradios.gr/api/gateway/webhook';}
+  catch(\RuntimeException){$checks['production_play_webhook']=false;}
   try{Config::base('production');$checks['provider_endpoint']=true;}
   catch(\RuntimeException){$checks['provider_endpoint']=false;}
   $manifest=self::manifest();$db=Db::get('production');

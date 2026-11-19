@@ -46,8 +46,20 @@ final class BroadcasterRecurringAdmin {
   $boost=Db::one($db,'SELECT sku,resource_id FROM broadcaster_boost_scopes WHERE payment_id=?',[$id]);
   return $boost?['sku'=>$boost['sku'],'resource_id'=>$boost['resource_id']]:null;
  }
- public static function index(PDO $db,PDO $registry,string $query=''):string{
-  if(!self::ready($db))return '<h2>Nexi MIT — Broadcasters</h2><p>Δεν υπάρχει ακόμη το staging Broadcaster schema.</p>';
+ /** Display-only capability check; does not create a payment or change an MIT gate. */
+ public static function executionEnabled(string $environment):bool{
+  if($environment==='production')return Config::stageProductionAllowed()
+   &&Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'
+   &&Config::get('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED')==='1';
+  if($environment==='staging')return Config::get('APP_ENV')==='staging'
+   &&Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'
+   &&Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1';
+  throw new \InvalidArgumentException('Environment');
+ }
+ public static function index(PDO $db,PDO $registry,string $query='',string $environment='staging'):string{
+  if(!in_array($environment,['staging','production'],true))
+   throw new \InvalidArgumentException('Environment');
+  if(!self::ready($db))return '<h2>Nexi MIT — Broadcasters</h2><p>Δεν υπάρχει το schema broadcaster_mandates στο επιλεγμένο περιβάλλον.</p>';
   $q=substr(trim($query),0,150);
   $where=$q!==''?' WHERE (c.email LIKE ? OR c.name LIKE ? OR m.id=? OR m.resource_id=?)':'';
   $params=$q!==''?['%'.$q.'%','%'.$q.'%',$q,$q]:[];
@@ -57,12 +69,12 @@ final class BroadcasterRecurringAdmin {
     m.paid_through_at,m.next_due_at,m.amount_cents,c.email,c.name
    FROM broadcaster_mandates m JOIN customers c ON c.id=m.customer_id".$where."
    ORDER BY m.created_at DESC LIMIT 150",$params);
-  $enabled=Config::get('APP_ENV')==='staging'
-   &&Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'
-   &&Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1';
+  $enabled=self::executionEnabled($environment);
+  $mode=$environment==='production'?'PRODUCTION':'SANDBOX';
   $html='<h2>Broadcaster Premium & Add-ons — Nexi MIT</h2>';
-  $html.='<p>Αυτόματες Broadcaster MIT: <strong>'.
-   ($enabled?'ΕΝΕΡΓΕΣ — SANDBOX':'ΚΛΕΙΔΩΜΕΝΕΣ / UAT').'</strong>. Κάθε συνδρομή είναι ανεξάρτητη ανά προϊόν και σταθμό.</p>';
+  $html.='<p>Εκτέλεση Broadcaster MIT ('.self::e($mode).'): <strong>'.
+   ($enabled?'ΕΝΕΡΓΟΠΟΙΗΜΕΝΗ':'ΑΠΕΝΕΡΓΟΠΟΙΗΜΕΝΗ').'</strong>. '.
+   'Κάθε συνδρομή είναι ανεξάρτητη ανά προϊόν και σταθμό. Η εκτέλεση worker ελέγχεται χωριστά.</p>';
   $html.='<table><tr><th>Πελάτης / εφαρμογή</th><th>Προϊόν / σταθμός</th><th>Μηνιαία χρέωση</th><th>Κατάσταση</th><th>Πληρωμένη έως</th><th>Επόμενη χρέωση</th><th></th></tr>';
   foreach($rows as $item){
    $app=$names[(int)$item['application_id']]??('App #'.$item['application_id']);

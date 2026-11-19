@@ -9,6 +9,42 @@ foreach(['APP_ENV'=>'staging','PRODUCTION_ENABLED'=>'0','IRADIOS_STAGE_PRODUCTIO
 putenv('MASTER_KEY_B64='.base64_encode(str_repeat('K',32)));
 $tests=0;
 function check(bool $ok,string $name):void {global $tests;$tests++;if(!$ok){fwrite(STDERR,"FAIL $name\n");exit(1);}echo "PASS $name\n";}
+// The Admin view must not confuse a verified active contract with permission
+// to execute a real MIT payment. These checks do not connect to a database.
+$mitEnv=['APP_ENV','PRODUCTION_ENABLED','IRADIOS_STAGE_PRODUCTION_ENABLED',
+ 'MIT_PRODUCTION_EXECUTION_ENABLED','MIT_PRODUCTION_UAT_APPROVED',
+ 'BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED','BROADCASTER_MIT_PRODUCTION_UAT_APPROVED'];
+$mitBefore=[];
+foreach($mitEnv as $key)$mitBefore[$key]=getenv($key);
+check(!\Iluma\Gateway\RecurringAdmin::executionEnabled('production')
+ &&!\Iluma\Gateway\BroadcasterRecurringAdmin::executionEnabled('production'),
+ 'Production MIT admin indicators remain disabled by default');
+foreach(['APP_ENV'=>'production','PRODUCTION_ENABLED'=>'1','IRADIOS_STAGE_PRODUCTION_ENABLED'=>'1',
+ 'MIT_PRODUCTION_EXECUTION_ENABLED'=>'1','MIT_PRODUCTION_UAT_APPROVED'=>'1',
+ 'BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED'=>'1',
+ 'BROADCASTER_MIT_PRODUCTION_UAT_APPROVED'=>'1'] as $key=>$value)putenv($key.'='.$value);
+check(\Iluma\Gateway\RecurringAdmin::executionEnabled('production')
+ &&\Iluma\Gateway\BroadcasterRecurringAdmin::executionEnabled('production'),
+ 'Production MIT admin indicators reflect independently approved execution');
+putenv('MIT_PRODUCTION_UAT_APPROVED=0');
+check(!\Iluma\Gateway\RecurringAdmin::executionEnabled('production')
+ &&\Iluma\Gateway\BroadcasterRecurringAdmin::executionEnabled('production'),
+ 'Listener MIT approval does not change Broadcaster execution status');
+putenv('IRADIOS_STAGE_PRODUCTION_ENABLED=0');
+check(!\Iluma\Gateway\RecurringAdmin::executionEnabled('production')
+ &&!\Iluma\Gateway\BroadcasterRecurringAdmin::executionEnabled('production'),
+ 'Production routing gate blocks both MIT execution indicators');
+foreach($mitBefore as $key=>$value){
+ if($value===false)putenv($key);else putenv($key.'='.$value);
+}
+$adminMitSource=file_get_contents(dirname(__DIR__).'/src/AdminApplication.php');
+check($adminMitSource!==false
+ &&preg_match('/RecurringAdmin::index\([^;]+,\$env\);/', $adminMitSource)===1
+ &&preg_match('/BroadcasterRecurringAdmin::index\([^;]+,\$env\);/', $adminMitSource)===1
+ &&str_contains($adminMitSource,"in_array(\$env,['staging','production'],true)")
+ &&!str_contains($adminMitSource,'Η Nexi MIT recurring υπηρεσία δεν είναι ενεργή στο production.'),
+ 'Canonical admin exposes read-only production MIT listing and detail');
+
 $encoded=Security::encrypt('sensitive provider key');check($encoded!=='sensitive provider key'&&Security::decrypt($encoded)==='sensitive provider key','Sodium secretbox roundtrip');
 $canonical=Security::signature('secret','1783585200','00000000000000000000000000000000','POST','/api/v1/payments/checkout','{"id":1}');
 check(strlen($canonical)===64,'HMAC length');check($canonical!==Security::signature('secret','1783585200','00000000000000000000000000000000','POST','/api/v1/payments/checkout','{"id":2}'),'payload modification invalidates HMAC');

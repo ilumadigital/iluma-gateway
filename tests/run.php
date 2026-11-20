@@ -381,10 +381,10 @@ check($dbSource!==false &&
 
 check(!str_contains($adminSource,"Config::get('ADMIN_HOST')"),'admin uses gateway host');
 check(!str_contains($adminSource,"header('Location: /')"),'admin redirects stay in protected path');
-check(AdminContext::environment([])==='staging','admin login page uses staging without a session environment');
+check(AdminContext::environment([])==='production','admin login page defaults to production without a session environment');
 check(AdminContext::environment(['view_env'=>'staging'])==='staging','admin staging selection');
 check(AdminContext::environment(['view_env'=>'production'])==='production','admin production selection');
-check(AdminContext::environment(['view_env'=>'unexpected'])==='staging','unknown admin display environment falls back to staging');
+check(AdminContext::environment(['view_env'=>'unexpected'])==='production','unknown admin display environment falls back to production');
 $adminJs=file_get_contents(dirname(__DIR__).'/public/admin.js');
 $adminCss=file_get_contents(dirname(__DIR__).'/public/admin.css');
 check($adminJs!==false && str_contains($adminJs,'requestSubmit'),'step-up popup submits after approval');

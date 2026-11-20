@@ -139,7 +139,7 @@ try {
      AdminLoginState::clear();
      session_regenerate_id(true);
      $_SESSION['admin_id']=(int)$u['id'];
-     $_SESSION['since']=time();$_SESSION['last']=time();$_SESSION['view_env']='staging';
+     $_SESSION['since']=time();$_SESSION['last']=time();$_SESSION['view_env']='production';
      Db::exec($reg,'UPDATE admin_users SET failed_attempts=0,locked_until=NULL,last_login_at=UTC_TIMESTAMP() WHERE id=?',[$u['id']]);
      audit('login','backoffice');
      header('Location: /ilm-admin/');exit;

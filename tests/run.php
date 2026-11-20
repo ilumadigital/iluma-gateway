@@ -52,6 +52,15 @@ check(Config::productionRecurringAllowed()&&!Config::productionMitExecutionAllow
 putenv('IRADIOS_PLAY_MIT_EXECUTION_APPROVED=1');
 check(Config::productionMitExecutionAllowed()&&Config::productionMitRoutingValue()===0,
  'Independent play MIT approval selects only direct-play mandates');
+check(Config::productionIradiosAllowed(),
+ 'Direct-play checkout admits verified iRadios product scopes');
+check(\Iluma\Gateway\BroadcasterStagingBootstrap::permitted([
+ 'environment'=>'production','slug'=>'iradiosgr','application_id'=>1]),
+ 'Play production broadcaster/Boost/advertising catalogue uses existing readiness gates');
+check(\Iluma\Gateway\BroadcasterBoost::choice([
+ 'resource_id'=>str_repeat('a',24)],'production','BOOST-T-DAY','iradiosgr',490)
+ ===str_repeat('a',24), 'Direct-play one-off station boost is scoped');
+
 putenv('IRADIOS_PLAY_MIT_EXECUTION_APPROVED=0');
 putenv('IRADIOS_PRODUCTION_PLAY_ENABLED=0');
 putenv('IRADIOS_STAGE_PRODUCTION_ENABLED=0');

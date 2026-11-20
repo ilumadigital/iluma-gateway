@@ -21,7 +21,7 @@ final class SavedCards {
    throw new HttpError(422,'Explicit stored-card consent required');
   if(!$save && $version!==null)
    throw new HttpError(422,'Unexpected card consent');
-  if(($save||$reuse)&&(!in_array($env,['staging','production'],true)||$sku!=='L-PREM'||$slug!=='iradiosgr'||($env==='production'&&!Config::stageProductionAllowed())))
+  if(($save||$reuse)&&(!in_array($env,['staging','production'],true)||$sku!=='L-PREM'||$slug!=='iradiosgr'||($env==='production'&&!Config::productionIradiosAllowed())))
    throw new HttpError(403,'Stored cards are staging-only');
   return ['save'=>$save,'reuse'=>$reuse,'version'=>$save?self::CONSENT_VERSION:null];
  }
@@ -78,7 +78,7 @@ final class SavedCards {
   return null;
  }
  public static function publicForCustomer(array $credential,string $external):array {
-  if(!in_array($credential['environment'],['staging','production'],true)||$credential['slug']!=='iradiosgr'||($credential['environment']==='production'&&!Config::stageProductionAllowed()))
+  if(!in_array($credential['environment'],['staging','production'],true)||$credential['slug']!=='iradiosgr'||($credential['environment']==='production'&&!Config::productionIradiosAllowed()))
    throw new HttpError(403,'Stored cards staging only');
   if(!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
    throw new HttpError(422,'Invalid customer scope');

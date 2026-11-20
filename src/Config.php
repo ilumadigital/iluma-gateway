@@ -40,8 +40,11 @@ final class Config {
   return $expected;
  }
  // Creating a real agreement and executing an MIT payment are separate operations.
- public static function productionRecurringAllowed():bool {
+ public static function productionIradiosAllowed():bool {
   return self::stageProductionAllowed()||self::playProductionAllowed();
+ }
+ public static function productionRecurringAllowed():bool {
+  return self::productionIradiosAllowed();
  }
  // Never inherit legacy stage MIT authorization when play routing is active.
  public static function productionMitExecutionAllowed():bool {

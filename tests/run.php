@@ -37,6 +37,26 @@ check(!\Iluma\Gateway\RecurringAdmin::executionEnabled('production')
 foreach($mitBefore as $key=>$value){
  if($value===false)putenv($key);else putenv($key.'='.$value);
 }
+// Direct-play renewals must NEVER inherit prior stage-route MIT approval.
+// These offline checks have no Nexi/provider or database calls.
+putenv('APP_ENV=production');putenv('PRODUCTION_ENABLED=1');
+putenv('IRADIOS_STAGE_PRODUCTION_ENABLED=1');
+putenv('IRADIOS_PRODUCTION_PLAY_ENABLED=0');
+putenv('IRADIOS_PLAY_MIT_EXECUTION_APPROVED=0');
+check(Config::productionMitExecutionAllowed()&&Config::productionMitRoutingValue()===1,
+ 'Original stage-routed MIT scope retained until direct-play cutover');
+putenv('IRADIOS_PRODUCTION_PLAY_ENABLED=1');
+check(Config::productionRecurringAllowed()&&!Config::productionMitExecutionAllowed()
+ &&Config::productionMitRoutingValue()===0,
+ 'Play may accept explicit recurring consent, but old stage MIT approval cannot charge');
+putenv('IRADIOS_PLAY_MIT_EXECUTION_APPROVED=1');
+check(Config::productionMitExecutionAllowed()&&Config::productionMitRoutingValue()===0,
+ 'Independent play MIT approval selects only direct-play mandates');
+putenv('IRADIOS_PLAY_MIT_EXECUTION_APPROVED=0');
+putenv('IRADIOS_PRODUCTION_PLAY_ENABLED=0');
+putenv('IRADIOS_STAGE_PRODUCTION_ENABLED=0');
+putenv('APP_ENV=staging');putenv('PRODUCTION_ENABLED=0');
+
 // Production-to-play routing and legacy webhook forwarding are separate
 // default-OFF gates. These tests have no provider or database calls.
 check(!Config::playProductionAllowed()&&!Config::legacyStageDeliveryToPlay(),

@@ -55,5 +55,14 @@ final class Config {
  public static function productionMitRoutingValue():int {
   return self::playProductionAllowed()?0:1;
  }
+ // The global runtime is shared; the HMAC credential (not APP_ENV) selects
+ // the staging or production tenant. Permit staging work in the correctly
+ // configured shared production runtime without weakening live payment gates.
+ // This is a runtime consistency check, NOT credential authentication.
+ public static function stagingTenantRuntimeAllowed():bool {
+  $mode=self::get('APP_ENV');$live=self::get('PRODUCTION_ENABLED')==='1';
+  return ($mode==='production'&&$live)||
+   (in_array($mode,['staging','development'],true)&&!$live);
+ }
  public static function liveAllowed(): bool { return self::get('PRODUCTION_ENABLED')==='1' && self::get('APP_ENV')==='production'; }
 }

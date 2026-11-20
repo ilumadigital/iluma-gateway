@@ -5,8 +5,8 @@ namespace Iluma\Gateway;
 use PDO;
 
 /**
- * Hostinger deploys main under APP_ENV=development. A signed iRadios staging
- * request may prepare ONLY the staging tenant; no manual SSH migration needed.
+ * A signed iRadios staging request in the single shared Gateway runtime
+ * prepares ONLY the staging tenant, even when global APP_ENV=production.
  * This class never invokes Nexi, creates payment attempts or enables MIT.
  */
 final class BroadcasterStagingBootstrap {
@@ -19,8 +19,7 @@ final class BroadcasterStagingBootstrap {
   if(($credential['environment']??null)==='production')
    return Config::productionIradiosAllowed();
   return ($credential['environment']??null)==='staging'
-   &&in_array(Config::get('APP_ENV'),['development','staging'],true)
-   &&Config::get('PRODUCTION_ENABLED')!=='1';
+   &&Config::stagingTenantRuntimeAllowed();
  }
 
  private static function isolated():bool {

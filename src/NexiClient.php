@@ -129,7 +129,7 @@ final class NexiClient {
   */
  public function startBroadcasterMit(string $orderId,string $customerId,
    string $contractId,int $amountCents):array {
-  if(!(($this->environment==='staging'&&Config::get('APP_ENV')!=='production'&&
+  if(!(($this->environment==='staging'&&Config::stagingTenantRuntimeAllowed()&&
       Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
       Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1')||
      ($this->environment==='production'&&Config::productionMitExecutionAllowed()&&

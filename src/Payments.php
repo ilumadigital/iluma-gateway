@@ -157,13 +157,15 @@ final class Payments {
   * Never applies to arbitrary unknown, redirect, pending, MIT renewal
   * cycles or anything with a provider transaction/verified webhook.
   */
- public static function reconcileRejectedHpp404(string $env,string $orderId):bool {
-  if($env!=='staging')return false;
-  $db=Db::get('staging');
+ public static function reconcileRejectedHpp404(string $env,string $orderId,bool $allowLegacy=false):bool {
+  if(!in_array($env,['staging','production'],true))return false;
+  // The shared Gateway runtime APP_ENV never selects the tenant DB.
+  // Production mutation requires a separate default-OFF opt-in.
+  if($env==='production'&&!RejectedHppRepair::productionApplyAllowed())return false;
+  $db=Db::get($env);
   $db->beginTransaction();
   try{
-   $p=Db::one($db,"SELECT id,status,operation_id,hosted_page,security_token_box,
-     created_at FROM payments WHERE order_id=? FOR UPDATE",[$orderId]);
+   $p=Db::one($db,"SELECT * FROM payments WHERE order_id=? FOR UPDATE",[$orderId]);
    if(!$p || $p['status']!=='unknown' || $p['operation_id']!==null ||
       $p['hosted_page']!==null || $p['security_token_box']!==null ||
       strtotime((string)$p['created_at'].' UTC')>time()-120) {
@@ -176,10 +178,17 @@ final class Payments {
           message_gr LIKE 'Η Nexi απέρριψε τη δημιουργία checkout (HTTP 400)%'))
      LIMIT 1",[$p['id']]);
    if(!$rejected){$db->rollBack();return false;}
+   // Production revalidates tenant, SKU, customer, mandate and absence of
+   // paid/event/contract/cycle evidence while the payment row is locked.
+   if($env==='production'&&RejectedHppRepair::eligibility(
+      $db,$env,$p,$allowLegacy,true)!=='READY'){
+    $db->rollBack();return false;
+   }
    // Requiring a positive documented 404 from Nexi before calling this
    // is the worker's responsibility; no retry provider POST is ever made.
-   Db::exec($db,"UPDATE payments SET status='failed'
+   $changed=Db::exec($db,"UPDATE payments SET status='failed'
      WHERE id=? AND status='unknown'",[$p['id']]);
+   if($changed!==1){$db->rollBack();return false;}
    // The first MIT mandate never became a provider contract.
    // Mark it cancelled and deactivated so it cannot block a later, new
    // opt-in. Financial event history is preserved for the rejected order.

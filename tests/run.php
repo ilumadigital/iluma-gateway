@@ -52,6 +52,45 @@ check(Config::productionRecurringAllowed()&&!Config::productionMitExecutionAllow
 putenv('IRADIOS_PLAY_MIT_EXECUTION_APPROVED=1');
 check(Config::productionMitExecutionAllowed()&&Config::productionMitRoutingValue()===0,
  'Independent play MIT approval selects only direct-play mandates');
+
+ // Provider MIT methods must use the same direct-play execution gate as the
+ // due-date selectors. Invalid order IDs stop before any Nexi HTTP request.
+ putenv('NEXI_PRODUCTION_BASE=https://xpay.nexigroup.com/api/phoenix-0.0/psp');
+ putenv('IRADIOS_STAGE_PRODUCTION_ENABLED=0');
+ putenv('MIT_PRODUCTION_EXECUTION_ENABLED=1');
+ putenv('MIT_PRODUCTION_UAT_APPROVED=1');
+ putenv('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED=1');
+ putenv('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED=1');
+ $offlineProvider=new NexiClient('production','offline-test-api-key');
+ $badOrder='invalid-order';
+ $providerCid='IR'.str_repeat('A',24);
+ $providerContract='ILM'.str_repeat('A',15);
+ try{$offlineProvider->startMit($badOrder,$providerCid,$providerContract,399);
+   $listenerPassesGate=false;
+ }catch(\InvalidArgumentException $e){$listenerPassesGate=true;}
+  catch(\RuntimeException $e){$listenerPassesGate=false;}
+ check($listenerPassesGate,'Direct-play Listener MIT reaches argument validation without provider request');
+ try{$offlineProvider->startBroadcasterMit($badOrder,$providerCid,$providerContract,9900);
+   $broadcasterPassesGate=false;
+ }catch(\InvalidArgumentException $e){$broadcasterPassesGate=true;}
+  catch(\RuntimeException $e){$broadcasterPassesGate=false;}
+ check($broadcasterPassesGate,'Direct-play Broadcaster MIT reaches argument validation without provider request');
+ putenv('IRADIOS_PLAY_MIT_EXECUTION_APPROVED=0');
+ try{$offlineProvider->startMit($badOrder,$providerCid,$providerContract,399);
+   $listenerLocked=false;
+ }catch(\RuntimeException $e){$listenerLocked=true;}
+ check($listenerLocked,'Listener MIT cannot inherit old stage approval when play approval is off');
+ try{$offlineProvider->startBroadcasterMit($badOrder,$providerCid,$providerContract,9900);
+   $broadcasterLocked=false;
+ }catch(\RuntimeException $e){$broadcasterLocked=true;}
+ check($broadcasterLocked,'Broadcaster MIT cannot inherit old stage approval when play approval is off');
+ putenv('MIT_PRODUCTION_EXECUTION_ENABLED=0');
+ putenv('MIT_PRODUCTION_UAT_APPROVED=0');
+ putenv('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED=0');
+ putenv('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED=0');
+ putenv('IRADIOS_STAGE_PRODUCTION_ENABLED=1');
+ putenv('IRADIOS_PLAY_MIT_EXECUTION_APPROVED=1');
+
 check(Config::productionIradiosAllowed(),
  'Direct-play checkout admits verified iRadios product scopes');
 check(\Iluma\Gateway\BroadcasterStagingBootstrap::permitted([

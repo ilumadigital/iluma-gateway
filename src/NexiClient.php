@@ -106,7 +106,7 @@ final class NexiClient {
    string $contractId,int $amountCents):array {
   if(!(($this->environment==='staging'&&Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
         Config::get('MIT_SANDBOX_UAT_APPROVED')==='1')||
-       ($this->environment==='production'&&Config::stageProductionAllowed()&&
+       ($this->environment==='production'&&Config::productionMitExecutionAllowed()&&
         Config::get('MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&
         Config::get('MIT_PRODUCTION_UAT_APPROVED')==='1')))
    throw new \RuntimeException('MIT sandbox execution is locked');
@@ -132,7 +132,7 @@ final class NexiClient {
   if(!(($this->environment==='staging'&&Config::get('APP_ENV')!=='production'&&
       Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
       Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1')||
-     ($this->environment==='production'&&Config::stageProductionAllowed()&&
+     ($this->environment==='production'&&Config::productionMitExecutionAllowed()&&
       Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&
       Config::get('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED')==='1')))
    throw new \RuntimeException('Broadcaster MIT execution locked');

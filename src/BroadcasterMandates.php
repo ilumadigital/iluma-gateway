@@ -16,7 +16,7 @@ final class BroadcasterMandates {
  }
  private static function isStaging(array $credential):bool {
   return ($credential['slug']??'')==='iradiosgr' && (
-   ($credential['environment']==='staging'&&Config::get('APP_ENV')!=='production')||
+   ($credential['environment']==='staging'&&Config::stagingTenantRuntimeAllowed())||
    ($credential['environment']==='production'&&Config::productionRecurringAllowed()));
  }
  public static function resource(string $sku,mixed $value):?string {
@@ -31,7 +31,7 @@ final class BroadcasterMandates {
  }
  public static function choice(array $body,string $env,string $sku,string $slug,int $price):?string {
   if(!array_key_exists($sku,self::PRICE))return null;
-  if($slug!=='iradiosgr'||!(($env==='staging'&&Config::get('APP_ENV')!=='production')||
+  if($slug!=='iradiosgr'||!(($env==='staging'&&Config::stagingTenantRuntimeAllowed())||
     ($env==='production'&&Config::productionRecurringAllowed())))
    throw new HttpError(403,'BROADCASTER_ENVIRONMENT_NOT_ALLOWED');
   if($price!==self::PRICE[$sku])throw new HttpError(422,'BROADCASTER_PRICE_MISMATCH');
@@ -211,7 +211,7 @@ final class BroadcasterMandates {
   }
  }
  public static function chargeDue(string $env,int $limit=5):void {
-  $enabled=($env==='staging'&&Config::get('APP_ENV')!=='production'&&
+  $enabled=($env==='staging'&&Config::stagingTenantRuntimeAllowed()&&
     Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
     Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1')||
    ($env==='production'&&Config::productionMitExecutionAllowed()&&

@@ -42,9 +42,10 @@ final class RejectedHppRepair {
   * Return a stable reason code, never payment/customer details.
   * May be called inside the existing payment-row FOR UPDATE transaction.
   */
- public static function eligibility(PDO $db,string $env,array $p,bool $allowLegacy=false):string {
+ public static function eligibility(PDO $db,string $env,array $p,bool $allowLegacy=false,bool $forApply=false):string {
   if(!self::permittedEnvironment($env))return 'ENVIRONMENT_LOCKED';
-  if($env==='production' && !self::productionApplyAllowed())return 'PRODUCTION_APPLY_LOCKED';
+  if($forApply && $env==='production' && !self::productionApplyAllowed())
+   return 'PRODUCTION_APPLY_LOCKED';
   if(!preg_match('/^IL[A-F0-9]{24}$/D',(string)($p['order_id']??'')))
    return 'INVALID_ORDER';
   if(($p['status']??null)!=='unknown')return 'NOT_UNKNOWN';

@@ -56,7 +56,9 @@ final class Worker {
      $status='delivered';$note='internal_test';$code=204;
     } else {
     $stageRouted=$env==='production'&&!empty($event['iradios_stage_routed']);
-    $credential=$stageRouted
+    // Direct-play production payments also use the initiating signing key.
+    // Unpinned historical/non-iRadios events retain the existing fallback.
+    $credential=$env==='production'&&!empty($event['origin_credential_id'])
      ?Db::one(Db::get('registry'),"SELECT secret_box FROM application_credentials WHERE id=? AND application_id=? AND environment='production' AND enabled=1",[(int)$event['origin_credential_id'],$event['application_id']])
      :Db::one(Db::get('registry'),"SELECT secret_box FROM application_credentials WHERE application_id=? AND environment=? AND enabled=1 ORDER BY created_at DESC LIMIT 1",[$event['application_id'],$env]);
     if(!$credential)throw new \RuntimeException('No outbound credential');

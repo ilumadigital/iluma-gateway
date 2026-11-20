@@ -85,11 +85,13 @@ final class Payments {
    if($winbackExpiredAt!==null)
     Winback::preflight($db,$application,$cid,$winbackExpiredAt);
    $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
-   if($toStage) {
-    // Commit routing before the irreversible Nexi call. Migration required.
+   if($isIradiosProduction) {
+    // Pin both direct play and legacy stage checkouts to the original signing
+    // credential before the irreversible Nexi call.
     Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status,iradios_stage_routed,origin_credential_id)
-      VALUES(?,?,?,?,?,?,?,?,'pending',1,?)",
-      [$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount,(int)$credential['id']]);
+      VALUES(?,?,?,?,?,?,?,?,'pending',?,?)",
+      [$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount,
+       $toStage?1:0,(int)$credential['id']]);
    } else {
     Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status) VALUES(?,?,?,?,?,?,?,?,'pending')",
       [$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount]);

@@ -17,7 +17,7 @@ final class BroadcasterMandates {
  private static function isStaging(array $credential):bool {
   return ($credential['slug']??'')==='iradiosgr' && (
    ($credential['environment']==='staging'&&Config::get('APP_ENV')!=='production')||
-   ($credential['environment']==='production'&&Config::stageProductionAllowed()));
+   ($credential['environment']==='production'&&Config::productionRecurringAllowed()));
  }
  public static function resource(string $sku,mixed $value):?string {
   if(!array_key_exists($sku,self::PRICE))throw new HttpError(422,'BROADCASTER_SKU_INVALID');
@@ -32,7 +32,7 @@ final class BroadcasterMandates {
  public static function choice(array $body,string $env,string $sku,string $slug,int $price):?string {
   if(!array_key_exists($sku,self::PRICE))return null;
   if($slug!=='iradiosgr'||!(($env==='staging'&&Config::get('APP_ENV')!=='production')||
-    ($env==='production'&&Config::stageProductionAllowed())))
+    ($env==='production'&&Config::productionRecurringAllowed())))
    throw new HttpError(403,'BROADCASTER_ENVIRONMENT_NOT_ALLOWED');
   if($price!==self::PRICE[$sku])throw new HttpError(422,'BROADCASTER_PRICE_MISMATCH');
   if(($body['auto_renew']??null)!==true||
@@ -97,7 +97,7 @@ final class BroadcasterMandates {
    'state'=>$row['status']??'none',
    'auto_renew'=>($row['status']??null)==='active',
    'execution_enabled'=>$credential['environment']==='production'
-    ?(Config::stageProductionAllowed()&&Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'
+    ?(Config::productionMitExecutionAllowed()&&Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'
       &&Config::get('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED')==='1')
     :(Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'
       &&Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1'),
@@ -214,14 +214,14 @@ final class BroadcasterMandates {
   $enabled=($env==='staging'&&Config::get('APP_ENV')!=='production'&&
     Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
     Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1')||
-   ($env==='production'&&Config::stageProductionAllowed()&&
+   ($env==='production'&&Config::productionMitExecutionAllowed()&&
     Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&
     Config::get('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED')==='1');
   if(!$enabled)return;
   $db=Db::get($env);if(!self::schemaReady($db))return;
   $rows=Db::all($db,$env==='production'
    ?"SELECT m.id FROM broadcaster_mandates m JOIN payments p ON p.id=m.initial_payment_id
-     WHERE p.iradios_stage_routed=1 AND m.status='active' AND m.verified_at IS NOT NULL
+     WHERE p.iradios_stage_routed=".Config::productionMitRoutingValue()." AND m.status='active' AND m.verified_at IS NOT NULL
        AND m.cancelled_at IS NULL AND m.next_due_at<=UTC_TIMESTAMP()
      ORDER BY m.next_due_at LIMIT ".max(1,min(5,$limit))
    :"SELECT id FROM broadcaster_mandates
@@ -256,13 +256,14 @@ final class BroadcasterMandates {
     if($env==='production'){
      $origin=Db::one($db,'SELECT iradios_stage_routed,origin_credential_id FROM payments WHERE id=?',
        [$m['initial_payment_id']]);
-     if(!$origin||empty($origin['iradios_stage_routed'])||empty($origin['origin_credential_id']))
+     if(!$origin||(int)$origin['iradios_stage_routed']!==Config::productionMitRoutingValue()||
+         (int)($origin['origin_credential_id']??0)<1)
       throw new \RuntimeException('Production broadcaster MIT origin credential missing');
      Db::exec($db,"INSERT INTO payments
       (id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,currency,status,iradios_stage_routed,origin_credential_id)
-      VALUES(?,?,?,?,?,?,?,?,'EUR','pending',1,?)",
+      VALUES(?,?,?,?,?,?,?,?,'EUR','pending',?,?)",
       [$pid,$m['application_id'],$m['customer_id'],$product['id'],$order,$request,$hash,
-       $m['amount_cents'],(int)$origin['origin_credential_id']]);
+       $m['amount_cents'],Config::productionMitRoutingValue(),(int)$origin['origin_credential_id']]);
     }else{
      Db::exec($db,"INSERT INTO payments
       (id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,currency,status)
@@ -307,7 +308,7 @@ final class BroadcasterMandates {
  }
  public static function pendingVerification(string $env,int $limit=10):void {
   if(!in_array($env,['staging','production'],true)||!self::schemaReady(Db::get($env)))return;
-  $productionScope=$env==='production'?' AND p.iradios_stage_routed=1':'';
+  $productionScope=$env==='production'?' AND p.iradios_stage_routed='.Config::productionMitRoutingValue():'';
   $rows=Db::all(Db::get($env),"SELECT m.initial_payment_id FROM broadcaster_mandates m
    JOIN payments p ON p.id=m.initial_payment_id
    WHERE m.status IN ('pending','verification_pending') AND p.status='paid'".
@@ -320,7 +321,7 @@ final class BroadcasterMandates {
   $db=Db::get($env);
   $rows=Db::all($db,$env==='production'
    ?"SELECT m.id,m.contract_id FROM broadcaster_mandates m JOIN payments p ON p.id=m.initial_payment_id
-     WHERE p.iradios_stage_routed=1 AND m.status='cancelled' AND m.deactivated_at IS NULL
+     WHERE m.status='cancelled' AND m.deactivated_at IS NULL
      ORDER BY m.cancelled_at LIMIT ".max(1,min($limit,30))
    :"SELECT id,contract_id FROM broadcaster_mandates
      WHERE status='cancelled' AND deactivated_at IS NULL ORDER BY cancelled_at

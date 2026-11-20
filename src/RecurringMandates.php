@@ -17,7 +17,7 @@ final class RecurringMandates {
   if($enable&&$version!==self::CONSENT)
    throw new HttpError(422,'EXPLICIT_RECURRING_CONSENT_REQUIRED');
   if(!$enable && $version!==null)throw new HttpError(422,'INVALID_RECURRING_CONSENT');
-  if($enable&&(!in_array($env,['staging','production'],true)||!in_array($sku,['L-PREM',Winback::SKU],true)||$slug!=='iradiosgr'||($env==='production'&&!Config::stageProductionAllowed())))
+  if($enable&&(!in_array($env,['staging','production'],true)||!in_array($sku,['L-PREM',Winback::SKU],true)||$slug!=='iradiosgr'||($env==='production'&&!Config::productionRecurringAllowed())))
    throw new HttpError(403,'RECURRING_STAGING_ONLY');
   if($enable&&(!empty($body['save_card'])||!empty($body['use_saved_card'])))
    throw new HttpError(422,'CANNOT_COMBINE_CIT_AND_MIT');
@@ -60,7 +60,7 @@ final class RecurringMandates {
   return self::recurrence($id);
  }
  private static function credentialCustomer(array $credential,string $external):array {
-  if(!in_array($credential['environment'],['staging','production'],true)||($credential['slug']??'')!=='iradiosgr'||($credential['environment']==='production'&&!Config::stageProductionAllowed()))
+  if(!in_array($credential['environment'],['staging','production'],true)||($credential['slug']??'')!=='iradiosgr'||($credential['environment']==='production'&&!Config::productionRecurringAllowed()))
    throw new HttpError(403,'STAGING_ONLY');
   if(!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
    throw new HttpError(422,'CUSTOMER_SCOPE_INVALID');
@@ -89,7 +89,7 @@ final class RecurringMandates {
    'paid_through_at'=>!empty($row['paid_through_at'])?str_replace(' ','T',$row['paid_through_at']).'Z':null,
    'cancelled_at'=>!empty($row['cancelled_at'])?str_replace(' ','T',$row['cancelled_at']).'Z':null,
    'execution_enabled'=>$credential['environment']==='production'
-    ?(Config::stageProductionAllowed()&&Config::get('MIT_PRODUCTION_EXECUTION_ENABLED')==='1'
+    ?(Config::productionMitExecutionAllowed()&&Config::get('MIT_PRODUCTION_EXECUTION_ENABLED')==='1'
       &&Config::get('MIT_PRODUCTION_UAT_APPROVED')==='1')
     :(Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'
       &&Config::get('MIT_SANDBOX_UAT_APPROVED')==='1'
@@ -168,7 +168,7 @@ final class RecurringMandates {
   $enabled=($env==='staging'&&Config::get('APP_ENV')!=='production'&&
      Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
      Config::get('MIT_SANDBOX_UAT_APPROVED')==='1')||
-    ($env==='production'&&Config::stageProductionAllowed()&&
+    ($env==='production'&&Config::productionMitExecutionAllowed()&&
      Config::get('MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&
      Config::get('MIT_PRODUCTION_UAT_APPROVED')==='1');
   if(!$enabled)return;
@@ -176,7 +176,7 @@ final class RecurringMandates {
   if(!self::schemaReady($db))return;
   $rows=Db::all($db,$env==='production'
    ?"SELECT m.id FROM recurring_mandates m JOIN payments p ON p.id=m.initial_payment_id
-     WHERE p.iradios_stage_routed=1 AND m.status='active'
+     WHERE p.iradios_stage_routed=".Config::productionMitRoutingValue()." AND m.status='active'
        AND m.verified_at IS NOT NULL AND m.cancelled_at IS NULL
        AND m.next_due_at<=UTC_TIMESTAMP() ORDER BY m.next_due_at LIMIT ".max(1,min(5,$limit))
    :"SELECT id FROM recurring_mandates
@@ -220,14 +220,15 @@ final class RecurringMandates {
     $req='mit-'.$mandateId.'-'.gmdate('YmdHis',strtotime($mandate['next_due_at'].' UTC'));
     $hash=hash('sha256',Security::json([$mandateId,$mandate['next_due_at'],399,'EUR']));
     if($env==='production'){
-     if(empty($mandate['iradios_stage_routed'])||empty($mandate['origin_credential_id']))
+     if((int)$mandate['iradios_stage_routed']!==Config::productionMitRoutingValue()||
+         (int)($mandate['origin_credential_id']??0)<1)
       throw new \RuntimeException('Production MIT origin credential not pinned');
      Db::exec($db,"INSERT INTO payments
       (id,application_id,customer_id,product_id,order_id,request_key,request_hash,
        amount_cents,currency,status,iradios_stage_routed,origin_credential_id)
-      VALUES(?,?,?,?,?,?,?,399,'EUR','pending',1,?)",
+      VALUES(?,?,?,?,?,?,?,399,'EUR','pending',?,?)",
       [$pid,$mandate['application_id'],$mandate['customer_id'],$regular['id'],$order,$req,$hash,
-       (int)$mandate['origin_credential_id']]);
+       Config::productionMitRoutingValue(),(int)$mandate['origin_credential_id']]);
     }else{
      Db::exec($db,"INSERT INTO payments
       (id,application_id,customer_id,product_id,order_id,request_key,request_hash,
@@ -311,7 +312,7 @@ final class RecurringMandates {
  public static function pendingVerification(string $env,int $limit=10):void {
   if(!in_array($env,['staging','production'],true))return;
   if(!self::schemaReady(Db::get($env)))return;
-  $productionScope=$env==='production'?' AND p.iradios_stage_routed=1':'';
+  $productionScope=$env==='production'?' AND p.iradios_stage_routed='.Config::productionMitRoutingValue():'';
   $rows=Db::all(Db::get($env),"SELECT m.initial_payment_id FROM recurring_mandates m
    JOIN payments p ON p.id=m.initial_payment_id WHERE m.status IN ('pending','verification_pending')
    AND p.status='paid'".$productionScope." ORDER BY m.created_at LIMIT ".max(1,min(30,$limit)));
@@ -325,7 +326,7 @@ final class RecurringMandates {
   $rows=Db::all($db,$env==='production'
    ?"SELECT m.id,m.contract_id FROM recurring_mandates m
      JOIN payments p ON p.id=m.initial_payment_id
-     WHERE p.iradios_stage_routed=1 AND m.status='cancelled' AND m.deactivated_at IS NULL
+     WHERE m.status='cancelled' AND m.deactivated_at IS NULL
      ORDER BY m.cancelled_at LIMIT ".max(1,min(30,$limit))
    :"SELECT id,contract_id FROM recurring_mandates
      WHERE status='cancelled' AND deactivated_at IS NULL

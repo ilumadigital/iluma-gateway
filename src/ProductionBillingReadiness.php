@@ -62,8 +62,8 @@ final class ProductionBillingReadiness {
   catch(\Throwable){/* Only readiness is returned, never ciphertext or plaintext. */}
   return ['environment'=>'production','ready'=>!in_array(false,$checks,true),'checks'=>$checks,
    'automatic_charges_enabled'=>[
-    'listener'=>Config::stageProductionAllowed()&&Config::get('MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&Config::get('MIT_PRODUCTION_UAT_APPROVED')==='1',
-    'broadcaster'=>Config::stageProductionAllowed()&&Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&Config::get('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED')==='1'
+    'listener'=>Config::productionMitExecutionAllowed()&&Config::get('MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&Config::get('MIT_PRODUCTION_UAT_APPROVED')==='1',
+    'broadcaster'=>Config::productionMitExecutionAllowed()&&Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&Config::get('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED')==='1'
    ]];
  }
  public static function assertReady(array $credential):void {

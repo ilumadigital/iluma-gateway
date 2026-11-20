@@ -97,6 +97,7 @@ jobs:
           python3 tests/vps_migration.py
           python3 tests/vps_tenant_alignment.py
           python3 tests/production_billing.py
+          python3 tests/clean_production_launch.py
           bash -n deploy/vps/check-readiness.sh
           bash -n deploy/vps/deploy-code.sh
           docker compose -f compose.vps.yml config --quiet

@@ -31,3 +31,17 @@ It prints aggregate counters only. A blocked audit is the **correct** result unt
 ## Release boundary
 
 This code prepares safety checks and the Admin default, **not** authorization to reset ledger or process MIT charges. The go-live decision also needs the iRadios independent production baseline gate.
+
+## Single-application scope
+
+The financial preflight reports ONLY the `iradiosgr` application from
+`iluma_registry.applications`, following foreign-key relationships for
+related rows that lack `application_id`. Other ILUMA clients in the shared
+`iluma_production` tenant must not be cleared, altered, or treated as blockers.
+An unresolvable application ID or missing mandatory table **fails closed**.
+The audit remains read-only. Before any migration of legacy orders into a
+restricted archive, reconcile all provider captures, unknown charges,
+refunds, deactivations, outbox provenance and original webhook credentials.
+A successful audit is a baseline check, not Nexi merchant MIT authorization.
+
+Offline regression: `python3 tests/clean_production_launch.py`.

@@ -155,19 +155,57 @@ check(\Iluma\Gateway\BroadcasterStagingBootstrap::permitted($stageCredential),
  'Hostinger development runtime accepts authenticated staging-only bootstrap');
 putenv('PRODUCTION_ENABLED=1');
 check(!\Iluma\Gateway\BroadcasterStagingBootstrap::permitted($stageCredential),
- 'Bootstrap refuses production-enabled runtime');
+ 'Contradictory development/live flags cannot open staging');
 putenv('PRODUCTION_ENABLED=0');
 putenv('APP_ENV=production');
 check(!\Iluma\Gateway\BroadcasterStagingBootstrap::permitted($stageCredential),
- 'Bootstrap rejects production APP_ENV');
-putenv('APP_ENV=development');
+ 'Incomplete production runtime flags cannot open staging');
+putenv('PRODUCTION_ENABLED=1');
+check(\Iluma\Gateway\BroadcasterStagingBootstrap::permitted($stageCredential)
+ &&\Iluma\Gateway\Config::stagingTenantRuntimeAllowed()
+ &&\Iluma\Gateway\Config::liveAllowed(),
+ 'Signed staging credential can use isolated sandbox tenant in common production runtime');
+$stageConsent=['auto_renew'=>true,
+ 'recurring_consent_version'=>\Iluma\Gateway\BroadcasterMandates::CONSENT];
+check(\Iluma\Gateway\BroadcasterMandates::choice(
+ $stageConsent,'staging','B-PREM','iradiosgr',9900)==='B-PREM',
+ 'Broadcaster Premium checkout keeps staging tenant under global production');
+check(\Iluma\Gateway\BroadcasterBoost::choice([
+ 'resource_id'=>str_repeat('a',24),'auto_renew'=>false],
+ 'staging','BOOST-G-DAY','iradiosgr',2900)===str_repeat('a',24),
+ 'One-time Boost checkout keeps staging tenant under global production');
+check(!\Iluma\Gateway\BroadcasterStagingBootstrap::permitted(
+ ['environment'=>'staging','slug'=>'another-app','application_id'=>1])
+ &&!\Iluma\Gateway\BroadcasterStagingBootstrap::permitted(
+ ['environment'=>'staging','slug'=>'iradiosgr','application_id'=>0]),
+ 'Wrong staging application or missing app ID cannot initialize Broadcaster tenant');
+putenv('IRADIOS_PRODUCTION_PLAY_ENABLED=0');
+putenv('IRADIOS_STAGE_PRODUCTION_ENABLED=0');
 check(!\Iluma\Gateway\BroadcasterStagingBootstrap::permitted(
  ['environment'=>'production','slug'=>'iradiosgr','application_id'=>1]),
- 'Production credential cannot initialize broadcaster sandbox');
-check(!\Iluma\Gateway\BroadcasterStagingBootstrap::permitted(
- ['environment'=>'staging','slug'=>'another-app','application_id'=>1]),
- 'Other tenants cannot initialize iRadios schema');
-putenv('APP_ENV=staging');
+ 'Production credential cannot inherit signed sandbox access');
+check(!\Iluma\Gateway\Config::productionRecurringAllowed(),
+ 'Staging checkout does not enable unapproved production recurring');
+$stageProvider=new NexiClient('staging','offline-test-api-key');
+putenv('NEXI_STAGING_BASE=https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp');
+putenv('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED=0');
+putenv('BROADCASTER_MIT_SANDBOX_UAT_APPROVED=0');
+try{$stageProvider->startBroadcasterMit('INVALID','INVALID','INVALID',9900);
+ $sandboxMitLocked=false;
+}catch(\RuntimeException $e){$sandboxMitLocked=true;}
+check($sandboxMitLocked,'Sandbox MIT remains disabled in shared production runtime without approval');
+putenv('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED=1');
+putenv('BROADCASTER_MIT_SANDBOX_UAT_APPROVED=1');
+try{$stageProvider->startBroadcasterMit('INVALID','INVALID','INVALID',9900);
+ $sandboxMitGuarded=false;
+}catch(\InvalidArgumentException $e){$sandboxMitGuarded=true;}
+ catch(\RuntimeException $e){$sandboxMitGuarded=false;}
+check($sandboxMitGuarded,'Approved sandbox MIT selects provider input validation, not Nexi Live');
+putenv('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED=0');
+putenv('BROADCASTER_MIT_SANDBOX_UAT_APPROVED=0');
+putenv('APP_ENV=staging');putenv('PRODUCTION_ENABLED=0');
+check(!\Iluma\Gateway\Config::liveAllowed(),
+ 'Staging global runtime cannot enter Nexi Live');
 if($originalProductionEnabled===false)putenv('PRODUCTION_ENABLED');
 else putenv('PRODUCTION_ENABLED='.$originalProductionEnabled);
 // Account deletion is a signed, staging-only financial operation; invalid

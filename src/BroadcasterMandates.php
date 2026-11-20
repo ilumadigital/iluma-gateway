@@ -8,7 +8,12 @@ namespace Iluma\Gateway;
  */
 final class BroadcasterMandates {
  public const CONSENT='iradios-broadcaster-monthly-v1';
- public const PRICE=['B-PREM'=>11900,'ADD-DSP'=>4990,'ADD-AN'=>790,'ADD-ADS'=>2990];
+ public const PRICE=['B-PREM'=>9900,'ADD-DSP'=>2790,'ADD-AN'=>690,'ADD-ADS'=>890];
+ // Old MIT contracts must continue at the amount explicitly consented to.
+ public const LEGACY_PRICE=['B-PREM'=>11900,'ADD-DSP'=>4990,'ADD-AN'=>790,'ADD-ADS'=>2990];
+ public static function validContractAmount(string $sku,int $amount):bool {
+  return isset(self::PRICE[$sku])&&($amount===self::PRICE[$sku]||$amount===self::LEGACY_PRICE[$sku]);
+ }
  private static function isStaging(array $credential):bool {
   return $credential['environment']==='staging'&&($credential['slug']??'')==='iradiosgr'
    &&Config::get('APP_ENV')!=='production';
@@ -78,12 +83,13 @@ final class BroadcasterMandates {
    'state'=>'unavailable','auto_renew'=>false,'execution_enabled'=>false,
    'next_charge_at'=>null,'paid_through_at'=>null,'cancelled_at'=>null];
   if(!self::schemaReady($db))return $base;
-  $row=Db::one($db,"SELECT m.status,m.next_due_at,m.paid_through_at,m.cancelled_at
+  $row=Db::one($db,"SELECT m.status,m.amount_cents,m.next_due_at,m.paid_through_at,m.cancelled_at
    FROM broadcaster_mandates m JOIN customers c ON c.id=m.customer_id
    WHERE m.application_id=? AND c.application_id=? AND c.external_user_id=?
     AND m.sku=? AND m.resource_id <=> ?
    ORDER BY m.created_at DESC LIMIT 1",[$app,$app,$external,$sku,$resource]);
   return array_merge($base,[
+   'amount_cents'=>isset($row['amount_cents'])?(int)$row['amount_cents']:self::PRICE[$sku],
    'state'=>$row['status']??'none',
    'auto_renew'=>($row['status']??null)==='active',
    'execution_enabled'=>Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'
@@ -222,10 +228,12 @@ final class BroadcasterMandates {
     $existing=Db::one($db,"SELECT id FROM broadcaster_cycles WHERE mandate_id=?
      AND cycle_due_at=? FOR UPDATE",[$m['id'],$m['next_due_at']]);
     if($existing){$db->rollBack();continue;}
+    // Keep the immutable price of a previously signed recurring agreement.
+    // New hosted checkouts use the newly configured product catalog price.
     $product=Db::one($db,"SELECT id FROM products WHERE application_id=? AND sku=?
-      AND amount_cents=? AND currency='EUR' AND enabled=1",
-      [$m['application_id'],$m['sku'],$m['amount_cents']]);
-    if(!$product||self::PRICE[$m['sku']]!==(int)$m['amount_cents'])
+      AND currency='EUR' AND enabled=1",
+      [$m['application_id'],$m['sku']]);
+    if(!$product||!self::validContractAmount($m['sku'],(int)$m['amount_cents']))
      throw new \RuntimeException('Broadcaster catalog mismatch');
     $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
     $request='bmit-'.$m['id'].'-'.gmdate('YmdHis',strtotime($m['next_due_at'].' UTC'));

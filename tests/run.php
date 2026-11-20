@@ -724,9 +724,49 @@ check(str_contains($paymentSource,"'hpp_rejected_400'") &&
  str_contains($paymentSource,"message_gr LIKE 'Η Nexi απέρριψε τη δημιουργία checkout (HTTP 400)%'") &&
  str_contains($paymentSource,"$" . "p['status']!=='unknown'"),
  'Gateway never releases a rejected checkout without the exact 400 marker and unknown status');
-check(str_contains($workerSource,"str_starts_with($" . "e->getMessage(),'Nexi status 404 ')") &&
+check(str_contains($workerSource,'RejectedHppRepair::provider404(') &&
  str_contains($workerSource,'Payments::reconcileRejectedHpp404('),
  'Only a read-only Nexi GET 404 allows the worker to reconcile a rejected HPP');
+
+// Rejected-HPP repair is fail closed and has separate manual/automatic gates.
+$repairSource=file_get_contents(dirname(__DIR__).'/src/RejectedHppRepair.php');
+$repairCli=file_get_contents(dirname(__DIR__).'/bin/reconcile-rejected-hpp.php');
+check(\Iluma\Gateway\RejectedHppRepair::provider404(new \RuntimeException('Nexi status 404 (correlation synthetic)'))
+ && !\Iluma\Gateway\RejectedHppRepair::provider404(new \RuntimeException('Nexi status 503 unavailable')),
+ 'Only a true provider 404 is acceptable for HPP rejection proof');
+$repairFlags=['APP_ENV','PRODUCTION_ENABLED','IRADIOS_PRODUCTION_REJECTED_HPP_REPAIR_ENABLED',
+ 'IRADIOS_PRODUCTION_REJECTED_HPP_AUTO_ENABLED'];
+$previousFlags=[];
+foreach($repairFlags as $flag)$previousFlags[$flag]=getenv($flag);
+putenv('APP_ENV=production');putenv('PRODUCTION_ENABLED=1');
+putenv('IRADIOS_PRODUCTION_REJECTED_HPP_REPAIR_ENABLED=0');
+putenv('IRADIOS_PRODUCTION_REJECTED_HPP_AUTO_ENABLED=1');
+check(!\Iluma\Gateway\RejectedHppRepair::productionApplyAllowed()
+ && !\Iluma\Gateway\RejectedHppRepair::productionAutoAllowed(),
+ 'Production repair stays locked without independent financial opt-in');
+putenv('IRADIOS_PRODUCTION_REJECTED_HPP_REPAIR_ENABLED=1');
+putenv('IRADIOS_PRODUCTION_REJECTED_HPP_AUTO_ENABLED=0');
+check(\Iluma\Gateway\RejectedHppRepair::productionApplyAllowed()
+ && !\Iluma\Gateway\RejectedHppRepair::productionAutoAllowed(),
+ 'Manual repair approval does not activate automatic worker');
+foreach($previousFlags as $flag=>$value){
+ if($value===false)putenv($flag);else putenv($flag.'='.$value);
+}
+check(str_contains($repairSource,'FINANCIAL_EVENT_EXISTS') &&
+ str_contains($repairSource,'LEGACY_STAGE_ROUTED_REVIEW') &&
+ str_contains($repairSource,'BROADCASTER_MANDATE_HAS_EVIDENCE') &&
+ str_contains($repairSource,'APPLICATION_NOT_IRADIOS') &&
+ str_contains($repairSource,'NEXI_404'),
+ 'Rejected-HPP evaluation guards financial evidence and tenant provenance');
+check(str_contains($repairCli,'--confirm-live') &&
+ str_contains($repairCli,'APPLY_TARGET_NOT_UNIQUE') &&
+ str_contains($repairCli,'--include-legacy-stage-routed') &&
+ str_contains($repairCli,'nexiOrderIsAbsent(') &&
+ str_contains($repairCli,'GET_ONLY'),
+ 'Production repair CLI requires a confirmed single-target scope');
+check(str_contains($workerSource,'RejectedHppRepair::productionAutoAllowed()'),
+ 'Production worker auto-repair requires independent approval');
+
 check(str_contains($paymentSource,"strtotime((string)$" . "p['created_at'].' UTC')>time()-120") &&
  str_contains($paymentSource,"$" . "p['operation_id']!==null") &&
  str_contains($paymentSource,"status='failed'"),

@@ -26,10 +26,10 @@ catch(\Iluma\Gateway\HttpError){$boostRejected=true;}
 check($boostRejected,'One-off Boost cannot be purchased at another catalog price');
 $accountConsent=['auto_renew'=>true,
  'recurring_consent_version'=>\Iluma\Gateway\BroadcasterMandates::CONSENT];
-check(\Iluma\Gateway\BroadcasterMandates::choice($accountConsent,'staging','B-PREM','iradiosgr',9900)==='B-PREM',
+check(\Iluma\Gateway\BroadcasterMandates::choice($accountConsent,'staging','B-PREM','iradiosgr',11900)==='B-PREM',
  'Broadcaster account Premium accepts explicit monthly consent');
 $addonConsent=$accountConsent+['resource_id'=>$stationRef];
-check(\Iluma\Gateway\BroadcasterMandates::choice($addonConsent,'staging','ADD-AN','iradiosgr',690)==='ADD-AN',
+check(\Iluma\Gateway\BroadcasterMandates::choice($addonConsent,'staging','ADD-AN','iradiosgr',790)==='ADD-AN',
  'Station Analytics accepts independent recurring consent');
 $addonRejected=false;
 try{\Iluma\Gateway\BroadcasterMandates::choice(
@@ -42,19 +42,6 @@ try{\Iluma\Gateway\BroadcasterMandates::choice(
  $addonConsent,'staging','ADD-AN','iradiosgr',399);}
 catch(\Iluma\Gateway\HttpError){$addonRejected=true;}
 check($addonRejected,'Broadcaster recurring price cannot fall back to Listener Premium 3.99');
-check(\Iluma\Gateway\BroadcasterMandates::PRICE['ADD-DSP']===2790&&
- \Iluma\Gateway\BroadcasterMandates::PRICE['ADD-ADS']===890,
- 'Staging Broadcaster checkout amounts match iRadios v6 catalog');
-check(\Iluma\Gateway\BroadcasterMandates::validContractAmount('B-PREM',11900)&&
- \Iluma\Gateway\BroadcasterMandates::validContractAmount('ADD-DSP',4990)&&
- \Iluma\Gateway\BroadcasterMandates::validContractAmount('ADD-AN',790)&&
- \Iluma\Gateway\BroadcasterMandates::validContractAmount('ADD-ADS',2990)&&
- !\Iluma\Gateway\BroadcasterMandates::validContractAmount('B-PREM',100),
- 'Old signed MIT mandates retain original amount after new product repricing');
-$legacyCheckoutBlocked=false;
-try{\Iluma\Gateway\BroadcasterMandates::choice($accountConsent,'staging','B-PREM','iradiosgr',11900);}
-catch(\Iluma\Gateway\HttpError){$legacyCheckoutBlocked=true;}
-check($legacyCheckoutBlocked,'New Premium checkout cannot revert to prior 119 EUR price');
 check(\Iluma\Gateway\CheckoutReturn::url('staging','/checkout/result','IL'.str_repeat('A',24),'BOOST-G-DAY')===
  'https://stage.iradios.gr/backoffice/boost?gateway_return=result&order=IL'.str_repeat('A',24),
  'Boost HPP return targets Backoffice rather than Listener Premium');

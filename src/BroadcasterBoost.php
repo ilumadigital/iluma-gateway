@@ -16,7 +16,7 @@ final class BroadcasterBoost {
  public static function choice(array $body,string $env,string $sku,string $slug,int $price):?string {
   if(!array_key_exists($sku,self::PRICE))return null;
   if($slug!=='iradiosgr'||!(($env==='staging'&&Config::get('APP_ENV')!=='production')||
-    ($env==='production'&&Config::stageProductionAllowed())))
+    ($env==='production'&&Config::productionIradiosAllowed())))
    throw new HttpError(403,'BOOST_ENVIRONMENT_NOT_ALLOWED');
   if($price!==self::PRICE[$sku])throw new HttpError(422,'BOOST_PRICE_MISMATCH');
   $station=$body['resource_id']??null;

@@ -42,7 +42,7 @@ final class RecurringAdmin {
  }
  /** Display-only capability check, independent of the contract's active state. */
  public static function executionEnabled(string $environment):bool{
-  if($environment==='production')return Config::stageProductionAllowed()
+  if($environment==='production')return Config::productionMitExecutionAllowed()
    &&Config::get('MIT_PRODUCTION_EXECUTION_ENABLED')==='1'
    &&Config::get('MIT_PRODUCTION_UAT_APPROVED')==='1';
   if($environment==='staging')return Config::get('APP_ENV')==='staging'

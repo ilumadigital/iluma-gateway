@@ -17,11 +17,12 @@ final class CheckoutReturn {
    return 'https://gateway.iluma.gr/ilm-admin/?p=test-center&order='.$orderId;
   if($applicationSlug!=='iradiosgr')
    return ApplicationRouting::returnUrl($environment,$applicationId,$orderId,$path==='/checkout/cancel'?'cancel':'result');
-  $origin=($environment==='staging'||($environment==='production'&&$stageRouted))?'https://stage.iradios.gr':'https://play.iradios.gr';
+  $returnToStage=$environment==='staging'||($environment==='production'&&$stageRouted&&!Config::legacyStageDeliveryToPlay());
+  $origin=$returnToStage?'https://stage.iradios.gr':'https://play.iradios.gr';
   $kind=$path==='/checkout/cancel'?'cancel':'result';
   // The caller looks up the product from the stored Gateway order; the
   // browser cannot choose or override the return destination.
-  $route=($environment==='staging'||$stageRouted)&&$sku==='ADV-BUDGET'
+  $route=$returnToStage&&$sku==='ADV-BUDGET'
    ?'/backoffice/agency/campaigns':
    (str_starts_with((string)$sku,'BOOST-')?'/backoffice/boost':
     (in_array($sku,['B-PREM','ADD-DSP','ADD-AN','ADD-ADS'],true)

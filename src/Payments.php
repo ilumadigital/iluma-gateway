@@ -11,13 +11,15 @@ final class Payments {
   // A configured, approved HTTPS route is mandatory for third-party apps.
   // Built-in iRadios and internal diagnostic retain their isolated paths.
   ApplicationRouting::assertCheckout($credential);
-  $toStage=$env==='production'&&($credential['slug']??'')==='iradiosgr';
+  $isIradiosProduction=$env==='production'&&($credential['slug']??'')==='iradiosgr';
+  // Default OFF: preserve real production-to-stage routing until explicit cutover.
+  $toStage=$isIradiosProduction&&!Config::playProductionAllowed();
   if($toStage&&!Config::stageProductionAllowed())
    throw new HttpError(503,'IRADIOS_STAGE_PRODUCTION_DISABLED');
-  if($toStage)ProductionBillingReadiness::assertReady($credential);
+  if($isIradiosProduction)ProductionBillingReadiness::assertReady($credential);
   $external=(string)($request['customer_id']??'');$sku=(string)($request['product_sku']??'');
   $email=(string)($request['email']??'');$name=(string)($request['name']??'');
-  if($toStage&&!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
+  if($isIradiosProduction&&!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
    throw new HttpError(422,'IRADIOS_STAGE_CUSTOMER_SCOPE_INVALID');
   // The new variable-price SKU is accepted ONLY from a signed staging
   // iRadios request. The caller's quote/campaign scope is validated once.
@@ -83,11 +85,13 @@ final class Payments {
    if($winbackExpiredAt!==null)
     Winback::preflight($db,$application,$cid,$winbackExpiredAt);
    $pid=Security::id();$order='IL'.strtoupper(substr($pid,0,24));
-   if($toStage) {
-    // Commit routing before the irreversible Nexi call. Migration required.
+   if($isIradiosProduction) {
+    // Pin both direct play and legacy stage checkouts to the original signing
+    // credential before the irreversible Nexi call.
     Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status,iradios_stage_routed,origin_credential_id)
-      VALUES(?,?,?,?,?,?,?,?,'pending',1,?)",
-      [$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount,(int)$credential['id']]);
+      VALUES(?,?,?,?,?,?,?,?,'pending',?,?)",
+      [$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount,
+       $toStage?1:0,(int)$credential['id']]);
    } else {
     Db::exec($db,"INSERT INTO payments(id,application_id,customer_id,product_id,order_id,request_key,request_hash,amount_cents,status) VALUES(?,?,?,?,?,?,?,?,'pending')",
       [$pid,$application,$cid,$product['id'],$order,$key,$hash,$checkoutAmount]);
@@ -269,7 +273,12 @@ final class Payments {
       Db::exec($db,"UPDATE billing_cycles SET state=? WHERE id=? AND state='pending'",[$status,$locked['billing_cycle_id']]);
      }
     }
-    $stageLinked=$env==='staging'||($env==='production'&&!empty($locked['iradios_stage_routed']));
+    // Both old stage-routed and NEW direct production iRadios payments use
+    // iRadios mandate/Boost/advertising settlement, never other production apps.
+    $iradiosProd=$env==='production'&&Db::one(Db::get('registry'),
+     "SELECT id FROM applications WHERE id=? AND slug='iradiosgr' LIMIT 1",
+     [(int)$locked['application_id']]);
+    $stageLinked=$env==='staging'||(bool)$iradiosProd;
     if($stageLinked){
      if($status==='paid')Winback::captured($db,$p['id']);
      // A provider-confirmed declined/cancelled *initial* HPP must not

@@ -26,5 +26,34 @@ final class Config {
    throw new \RuntimeException('Stage production webhook destination mismatch');
   return $expected;
  }
+ // Production routing is explicitly activated only after play is ready.
+ public static function playProductionAllowed():bool {
+  return self::liveAllowed()&&self::get('IRADIOS_PRODUCTION_PLAY_ENABLED')==='1';
+ }
+ public static function legacyStageDeliveryToPlay():bool {
+  return self::playProductionAllowed()&&self::get('IRADIOS_LEGACY_STAGE_TO_PLAY_ENABLED')==='1';
+ }
+ public static function playProductionWebhook():string {
+  $expected='https://play.iradios.gr/api/gateway/webhook';
+  if(self::must('IRADIOS_PRODUCTION_WEBHOOK')!==$expected)
+   throw new \RuntimeException('Production play webhook destination mismatch');
+  return $expected;
+ }
+ // Creating a real agreement and executing an MIT payment are separate operations.
+ public static function productionIradiosAllowed():bool {
+  return self::stageProductionAllowed()||self::playProductionAllowed();
+ }
+ public static function productionRecurringAllowed():bool {
+  return self::productionIradiosAllowed();
+ }
+ // Never inherit legacy stage MIT authorization when play routing is active.
+ public static function productionMitExecutionAllowed():bool {
+  return self::playProductionAllowed()
+   ?self::get('IRADIOS_PLAY_MIT_EXECUTION_APPROVED')==='1'
+   :self::stageProductionAllowed();
+ }
+ public static function productionMitRoutingValue():int {
+  return self::playProductionAllowed()?0:1;
+ }
  public static function liveAllowed(): bool { return self::get('PRODUCTION_ENABLED')==='1' && self::get('APP_ENV')==='production'; }
 }

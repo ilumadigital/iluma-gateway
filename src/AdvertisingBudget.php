@@ -5,8 +5,8 @@ namespace Iluma\Gateway;
 use PDO;
 
 /**
- * Staging-only variable-price Advertising Budget checkout. Only the signed
- * iRadios staging application can authorize an amount and a Mongo campaign
+ * Signed iRadios variable-price Advertising Budget checkout. The production
+ * tenant needs explicit play routing and preverified schema/catalog to authorize a Mongo campaign
  * + quote pair. The existing Premium/Broadcaster catalog is never modified.
  * A checkout is NOT a financial entitlement: only Nexi reconciliation emits
  * a signed webhook, and the iRadios ledger credits it idempotently.
@@ -17,8 +17,8 @@ final class AdvertisingBudget {
  private static bool $ready=false;
 
  public static function permitted(array $credential):bool {
-  // The signed iRadios staging credential and isolated tenant are the gate.
-  // Nexi remains in Sandbox; there is no second advertising-specific switch.
+  // The signed iRadios credential and isolated tenant determine environment.
+  // Production uses real Nexi only under approved production play routing.
   return BroadcasterStagingBootstrap::permitted($credential);
  }
  private static function isolated():bool {

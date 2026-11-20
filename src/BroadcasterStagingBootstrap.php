@@ -17,7 +17,7 @@ final class BroadcasterStagingBootstrap {
  public static function permitted(array $credential):bool {
   if(($credential['slug']??null)!=='iradiosgr'||(int)($credential['application_id']??0)<=0)return false;
   if(($credential['environment']??null)==='production')
-   return Config::stageProductionAllowed();
+   return Config::productionIradiosAllowed();
   return ($credential['environment']??null)==='staging'
    &&in_array(Config::get('APP_ENV'),['development','staging'],true)
    &&Config::get('PRODUCTION_ENABLED')!=='1';

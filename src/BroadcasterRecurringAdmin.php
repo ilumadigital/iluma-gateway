@@ -48,7 +48,7 @@ final class BroadcasterRecurringAdmin {
  }
  /** Display-only capability check; does not create a payment or change an MIT gate. */
  public static function executionEnabled(string $environment):bool{
-  if($environment==='production')return Config::stageProductionAllowed()
+  if($environment==='production')return Config::productionMitExecutionAllowed()
    &&Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'
    &&Config::get('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED')==='1';
   if($environment==='staging')return Config::get('APP_ENV')==='staging'

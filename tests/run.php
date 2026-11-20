@@ -186,8 +186,8 @@ check(!\Iluma\Gateway\BroadcasterStagingBootstrap::permitted(
  'Production credential cannot inherit signed sandbox access');
 check(!\Iluma\Gateway\Config::productionRecurringAllowed(),
  'Staging checkout does not enable unapproved production recurring');
-$stageProvider=new NexiClient('staging','offline-test-api-key');
 putenv('NEXI_STAGING_BASE=https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp');
+$stageProvider=new NexiClient('staging','offline-test-api-key');
 putenv('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED=0');
 putenv('BROADCASTER_MIT_SANDBOX_UAT_APPROVED=0');
 try{$stageProvider->startBroadcasterMit('INVALID','INVALID','INVALID',9900);

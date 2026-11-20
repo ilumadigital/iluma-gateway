@@ -39,5 +39,18 @@ final class Config {
    throw new \RuntimeException('Production play webhook destination mismatch');
   return $expected;
  }
+ // Creating a real agreement and executing an MIT payment are separate operations.
+ public static function productionRecurringAllowed():bool {
+  return self::stageProductionAllowed()||self::playProductionAllowed();
+ }
+ // Never inherit legacy stage MIT authorization when play routing is active.
+ public static function productionMitExecutionAllowed():bool {
+  return self::playProductionAllowed()
+   ?self::get('IRADIOS_PLAY_MIT_EXECUTION_APPROVED')==='1'
+   :self::stageProductionAllowed();
+ }
+ public static function productionMitRoutingValue():int {
+  return self::playProductionAllowed()?0:1;
+ }
  public static function liveAllowed(): bool { return self::get('PRODUCTION_ENABLED')==='1' && self::get('APP_ENV')==='production'; }
 }

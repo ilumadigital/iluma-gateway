@@ -7,7 +7,7 @@ final class AdminContext
 {
     public static function environment(array $session): string
     {
-        $environment = $session['view_env'] ?? 'staging';
-        return in_array($environment, ['staging', 'production'], true) ? $environment : 'staging';
+        $environment = $session['view_env'] ?? 'production';
+        return in_array($environment, ['staging', 'production'], true) ? $environment : 'production';
     }
 }

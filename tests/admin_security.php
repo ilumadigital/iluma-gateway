@@ -6,6 +6,7 @@ use Iluma\Gateway\Security;
 use Iluma\Gateway\HttpError;
 use Iluma\Gateway\AdminLoginState;
 use Iluma\Gateway\AdminTurnstile;
+use Iluma\Gateway\AdminContext;
 
 function csrfCheckRejects(): bool {
     try { Security::verifyCsrf(); }
@@ -16,6 +17,11 @@ function assertAdminSecurity(bool $result, string $name): void {
     if (!$result) { fwrite(STDERR, "FAIL $name\n"); exit(1); }
     echo "PASS $name\n";
 }
+
+assertAdminSecurity(AdminContext::environment([])==='production', 'Admin default environment is production');
+assertAdminSecurity(AdminContext::environment(['view_env'=>'production'])==='production', 'Explicit production workspace retained');
+assertAdminSecurity(AdminContext::environment(['view_env'=>'staging'])==='staging', 'Explicit staging workspace retained');
+assertAdminSecurity(AdminContext::environment(['view_env'=>'untrusted'])==='production', 'Invalid workspace is not staging fallback');
 
 $_SESSION = [];
 $_POST = [];
@@ -68,4 +74,6 @@ $source=file_get_contents(dirname(__DIR__).'/src/AdminApplication.php');
 assertAdminSecurity(strpos($source, 'AdminLoginState::begin(') <
     strpos($source, "\$_SESSION['admin_id']=(int)\$u['id'];"),
     'Authenticated session issued only after MFA stage');
+assertAdminSecurity(strpos($source, "\$_SESSION['view_env']='production'") !== false,
+    'Successful MFA login begins in production workspace');
 echo "ADMIN SECURITY REGRESSIONS PASSED\n";

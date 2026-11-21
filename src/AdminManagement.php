@@ -179,7 +179,7 @@ final class AdminManagement {
   return $s;
  }
  public static function products(PDO $reg,string $env,string $csrf,int $chosen=0):string {
-  $apps=Db::all($reg,'SELECT id,slug,name FROM applications WHERE slug<>'iluma-internal' ORDER BY name');
+  $apps=Db::all($reg,"SELECT id,slug,name FROM applications WHERE slug<>'iluma-internal' ORDER BY name");
   if(!$apps)return '<p>Πρόσθεσε πρώτα μία εφαρμογή.</p>';
   $found=false;
   foreach($apps as $a)if((int)$a['id']===$chosen)$found=true;

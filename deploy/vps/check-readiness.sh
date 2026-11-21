@@ -8,6 +8,7 @@ test -f /etc/iluma-gateway/iluma-gateway.env || { echo 'STOP: missing private Ga
 "${COMPOSE[@]}" config --quiet
 "${COMPOSE[@]}" ps
 "${COMPOSE[@]}" exec -T php php bin/check-source-integrity.php
+bash deploy/vps/check-source-match.sh
 "${COMPOSE[@]}" exec -T php php bin/manage.php doctor-http
 for path in /ilm-admin/ /ilm-admin/admin.css /ilm-admin/admin.js; do
   code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' -H 'Host: gateway.iluma.gr' "http://127.0.0.1:5561$path")"

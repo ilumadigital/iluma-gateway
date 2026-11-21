@@ -64,5 +64,13 @@ final class Config {
   return ($mode==='production'&&$live)||
    (in_array($mode,['staging','development'],true)&&!$live);
  }
+ // Customer references are opaque account identifiers, NOT tenant selectors.
+ // Historical live payments used the stage prefix; accept those only behind
+ // authenticated PRODUCTION credentials while new play IDs coexist.
+ public static function iradiosCustomerAllowed(string $env,string $id):bool {
+  if($env==='staging')return preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$id)===1;
+  if($env==='production')return preg_match('/^iradios-(?:stage|play)-[a-f0-9]{24}$/D',$id)===1;
+  return false;
+ }
  public static function liveAllowed(): bool { return self::get('PRODUCTION_ENABLED')==='1' && self::get('APP_ENV')==='production'; }
 }

@@ -36,8 +36,11 @@ production = services["worker-production"]
 assert production.get("profiles") == ["worker-production"]
 assert production.get("read_only") is True
 assert not production.get("ports")
-assert production["command"][-1].endswith("exec php bin/work.php production --no-charge")
+production_command = production["command"][-1]
+assert "if grep -qx 'ENABLE_PRODUCTION_MIT=1'" in production_command
+assert "then exec php bin/work.php production;" in production_command
+assert "else exec php bin/work.php production --no-charge; fi" in production_command
 assert any(x.get("source") == "/etc/iluma-gateway/production-worker.enabled"
            and x.get("read_only") is True for x in production["volumes"])
 assert services["worker"]["command"][-1].endswith("php bin/work.php staging")
-print("PASS: production reconciliation is separately gated and cannot run chargeDue")
+print("PASS: production worker remains no-charge unless separately authorized by operator and ENV")

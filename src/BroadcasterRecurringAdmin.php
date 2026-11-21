@@ -51,7 +51,7 @@ final class BroadcasterRecurringAdmin {
   if($environment==='production')return Config::productionMitExecutionAllowed()
    &&Config::get('BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED')==='1'
    &&Config::get('BROADCASTER_MIT_PRODUCTION_UAT_APPROVED')==='1';
-  if($environment==='staging')return Config::get('APP_ENV')==='staging'
+  if($environment==='staging')return Config::stagingTenantRuntimeAllowed()
    &&Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')==='1'
    &&Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1';
   throw new \InvalidArgumentException('Environment');

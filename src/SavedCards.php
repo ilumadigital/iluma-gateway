@@ -80,7 +80,7 @@ final class SavedCards {
  public static function publicForCustomer(array $credential,string $external):array {
   if(!in_array($credential['environment'],['staging','production'],true)||$credential['slug']!=='iradiosgr'||($credential['environment']==='production'&&!Config::productionIradiosAllowed()))
    throw new HttpError(403,'Stored cards staging only');
-  if(!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
+  if(!Config::iradiosCustomerAllowed($credential['environment'],$external))
    throw new HttpError(422,'Invalid customer scope');
   $db=Db::get($credential['environment']);
   $customer=Db::one($db,'SELECT id FROM customers WHERE application_id=? AND external_user_id=?',
@@ -131,7 +131,7 @@ final class SavedCards {
   $db=Db::get($env);
   $rows=Db::all($db,$env==='production'
     ?"SELECT a.id,a.contract_id FROM saved_card_agreements a JOIN payments p ON p.id=a.payment_id
-      WHERE p.iradios_stage_routed=1 AND a.status='revocation_pending'
+      WHERE a.status='revocation_pending'
       ORDER BY a.updated_at ASC LIMIT ".max(1,min($limit,50))
     :"SELECT id,contract_id FROM saved_card_agreements
       WHERE status='revocation_pending' ORDER BY updated_at ASC LIMIT ".max(1,min($limit,50)));
@@ -148,7 +148,7 @@ final class SavedCards {
  }
  public static function syncPending(string $env,int $limit=15):void {
   if(!in_array($env,['staging','production'],true))return;
-  $productionScope=$env==='production'?' AND p.iradios_stage_routed=1':'';
+  $productionScope=''; // Both historical and direct-play paid cards require verification.
   $rows=Db::all(Db::get($env),"SELECT a.payment_id FROM saved_card_agreements a
     JOIN payments p ON p.id=a.payment_id
     WHERE a.status='pending' AND p.status='paid'".

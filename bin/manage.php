@@ -23,9 +23,16 @@ if($command==='doctor-http'){
  $run('PRODUCTION_MODE_CONSISTENT',static fn():bool=>
    (\Iluma\Gateway\Config::get('PRODUCTION_ENABLED')==='1')===
    (\Iluma\Gateway\Config::get('APP_ENV')==='production'));
- $run('BROADCASTER_MIT_LOCK',static fn():bool=>
+ // UAT-approved Sandbox MIT can operate in a shared production PHP runtime.
+ // The doctor only verifies the consistency of execution gates; no charges.
+ $run('SANDBOX_LISTENER_MIT_GATES',static fn():bool=>
+  \Iluma\Gateway\Config::get('MIT_SANDBOX_EXECUTION_ENABLED')!=='1'
+  ||(\Iluma\Gateway\Config::get('MIT_SANDBOX_UAT_APPROVED')==='1'
+    &&\Iluma\Gateway\Config::stagingTenantRuntimeAllowed()));
+ $run('SANDBOX_BROADCASTER_MIT_GATES',static fn():bool=>
   \Iluma\Gateway\Config::get('BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED')!=='1'
-  ||\Iluma\Gateway\Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')!=='1');
+  ||(\Iluma\Gateway\Config::get('BROADCASTER_MIT_SANDBOX_UAT_APPROVED')==='1'
+    &&\Iluma\Gateway\Config::stagingTenantRuntimeAllowed()));
  $run('PRIVATE_ENV_ACCESS',static function():bool {
   $file=\Iluma\Gateway\EnvLoader::privateFilePath(dirname(__DIR__));
   return is_file($file)&&is_readable($file)&&

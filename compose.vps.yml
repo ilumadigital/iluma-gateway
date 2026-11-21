@@ -130,7 +130,10 @@ services:
         read_only: true
         bind:
           create_host_path: false
-    command: ["sh", "-ec", "test -f /etc/iluma-gateway/production-worker.enabled || { echo 'STOP: cutover approval flag missing' >&2; exit 78; }; exec php bin/work.php production --no-charge"]
+    # Default NO-CHARGE. A second, operator-owned authorization marker inside the
+    # existing root-controlled approval file must be present to even attempt MIT;
+    # PHP independently validates all per-tenant UAT and execution ENV gates.
+    command: ["sh", "-ec", "test -f /etc/iluma-gateway/production-worker.enabled || { echo 'STOP: cutover approval flag missing' >&2; exit 78; }; if grep -qx 'ENABLE_PRODUCTION_MIT=1' /etc/iluma-gateway/production-worker.enabled; then exec php bin/work.php production; else exec php bin/work.php production --no-charge; fi"]
     working_dir: /srv/iluma-gateway/app
     restart: "no"
     mem_limit: 256m

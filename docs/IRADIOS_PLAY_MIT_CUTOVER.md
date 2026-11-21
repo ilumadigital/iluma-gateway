@@ -14,8 +14,20 @@ The feature branch prepares **new** production iRadios checkouts for
   gate Listener renewal. Corresponding BROADCASTER MIT flags still independently
   gate Broadcaster renewal. Existing production stage-routing approval alone
   cannot authorize a new play MIT charge.
-- The worker `--no-charge` mode remains mandatory for safe deployment smoke
-  tests; do not activate a charging worker before approval.
+- The worker runs with `--no-charge` by default even when the recurring
+  ENV gates are enabled. The separate operator-owned
+  `/etc/iluma-gateway/production-worker.enabled` approval file must contain
+  the exact line `ENABLE_PRODUCTION_MIT=1` to allow the charging branch.
+  The existing file is already mounted read-only into the worker; no extra
+  Docker bind mount, application environment selector or secret is introduced.
+- Adding that line is a **production financial authorization** requiring
+  separate explicit approval, successful provider MIT UAT, and validated
+  Listener/Broadcaster billing reconciliations. NEVER add it as part of a
+  routine code rebuild or smoke test. The PHP worker additionally checks
+  `IRADIOS_PLAY_MIT_EXECUTION_APPROVED=1` and the relevant
+  Listener/Broadcaster `*_PRODUCTION_*UAT_APPROVED` and execution flags.
+- Keep the marker absent until all live financial-history and callback
+  investigations are closed.
 
 ## Provenance
 

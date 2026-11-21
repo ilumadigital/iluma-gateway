@@ -9,6 +9,33 @@ foreach(['APP_ENV'=>'staging','PRODUCTION_ENABLED'=>'0','IRADIOS_STAGE_PRODUCTIO
 putenv('MASTER_KEY_B64='.base64_encode(str_repeat('K',32)));
 $tests=0;
 function check(bool $ok,string $name):void {global $tests;$tests++;if(!$ok){fwrite(STDERR,"FAIL $name\n");exit(1);}echo "PASS $name\n";}
+// Customer references never select a tenant: authenticated credentials do.
+$legacyId='iradios-stage-'.str_repeat('a',24);
+$playId='iradios-play-'.str_repeat('b',24);
+check(Config::iradiosCustomerAllowed('staging',$legacyId)
+ &&!Config::iradiosCustomerAllowed('staging',$playId)
+ &&Config::iradiosCustomerAllowed('production',$legacyId)
+ &&Config::iradiosCustomerAllowed('production',$playId)
+ &&!Config::iradiosCustomerAllowed('other',$legacyId),
+ 'Customer references cannot select another tenant');
+$sandboxVars=['APP_ENV','PRODUCTION_ENABLED','MIT_SANDBOX_EXECUTION_ENABLED',
+ 'MIT_SANDBOX_UAT_APPROVED','BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED',
+ 'BROADCASTER_MIT_SANDBOX_UAT_APPROVED'];
+$savedSandbox=[];
+foreach($sandboxVars as $k)$savedSandbox[$k]=getenv($k);
+foreach(['APP_ENV'=>'production','PRODUCTION_ENABLED'=>'1',
+ 'MIT_SANDBOX_EXECUTION_ENABLED'=>'1','MIT_SANDBOX_UAT_APPROVED'=>'1',
+ 'BROADCASTER_MIT_SANDBOX_EXECUTION_ENABLED'=>'1',
+ 'BROADCASTER_MIT_SANDBOX_UAT_APPROVED'=>'1'] as $k=>$v)putenv($k.'='.$v);
+check(Config::stagingTenantRuntimeAllowed()
+ &&\Iluma\Gateway\RecurringAdmin::executionEnabled('staging')
+ &&\Iluma\Gateway\BroadcasterRecurringAdmin::executionEnabled('staging'),
+ 'Shared production runtime permits approved Sandbox tenant MIT');
+putenv('MIT_SANDBOX_UAT_APPROVED=0');
+check(!\Iluma\Gateway\RecurringAdmin::executionEnabled('staging')
+ &&\Iluma\Gateway\BroadcasterRecurringAdmin::executionEnabled('staging'),
+ 'Listener Sandbox MIT stays independently locked');
+foreach($savedSandbox as $k=>$v){if($v===false)putenv($k);else putenv($k.'='.$v);}
 // The Admin view must not confuse a verified active contract with permission
 // to execute a real MIT payment. These checks do not connect to a database.
 $mitEnv=['APP_ENV','PRODUCTION_ENABLED','IRADIOS_STAGE_PRODUCTION_ENABLED',

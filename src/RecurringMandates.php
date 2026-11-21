@@ -4,7 +4,7 @@ namespace Iluma\Gateway;
 
 /**
  * Explicit subscription mandate for XPay Greece MIT_SCHEDULED.
- * Staging-only, and independently gated from OneClick/CIT.
+ * Tenant-isolated and independently gated from OneClick/CIT.
  * Each provider request uses a unique gateway order, financial reconciliation
  * and the durable HMAC outbox. No PAN/CVV is stored in this service.
  */
@@ -62,7 +62,7 @@ final class RecurringMandates {
  private static function credentialCustomer(array $credential,string $external):array {
   if(!in_array($credential['environment'],['staging','production'],true)||($credential['slug']??'')!=='iradiosgr'||($credential['environment']==='production'&&!Config::productionRecurringAllowed()))
    throw new HttpError(403,'STAGING_ONLY');
-  if(!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
+  if(!Config::iradiosCustomerAllowed($credential['environment'],$external))
    throw new HttpError(422,'CUSTOMER_SCOPE_INVALID');
   return [Db::get($credential['environment']),(int)$credential['application_id']];
  }
@@ -93,7 +93,7 @@ final class RecurringMandates {
       &&Config::get('MIT_PRODUCTION_UAT_APPROVED')==='1')
     :(Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'
       &&Config::get('MIT_SANDBOX_UAT_APPROVED')==='1'
-      &&Config::get('APP_ENV')==='staging')
+      &&Config::stagingTenantRuntimeAllowed())
   ];
  }
  public static function cancel(array $credential,string $external):array {
@@ -165,7 +165,7 @@ final class RecurringMandates {
   * provider POST after an error/timeout, and never run outside staging.
   */
  public static function chargeDue(string $env,int $limit=5):void {
-  $enabled=($env==='staging'&&Config::get('APP_ENV')!=='production'&&
+  $enabled=($env==='staging'&&Config::stagingTenantRuntimeAllowed()&&
      Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
      Config::get('MIT_SANDBOX_UAT_APPROVED')==='1')||
     ($env==='production'&&Config::productionMitExecutionAllowed()&&

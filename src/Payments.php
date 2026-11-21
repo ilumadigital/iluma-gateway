@@ -11,7 +11,8 @@ final class Payments {
   // A configured, approved HTTPS route is mandatory for third-party apps.
   // Built-in iRadios and internal diagnostic retain their isolated paths.
   ApplicationRouting::assertCheckout($credential);
-  $isIradiosProduction=$env==='production'&&($credential['slug']??'')==='iradiosgr';
+  $isIradios=($credential['slug']??'')==='iradiosgr';
+  $isIradiosProduction=$env==='production'&&$isIradios;
   // Default OFF: preserve real production-to-stage routing until explicit cutover.
   $toStage=$isIradiosProduction&&!Config::playProductionAllowed();
   if($toStage&&!Config::stageProductionAllowed())
@@ -19,7 +20,7 @@ final class Payments {
   if($isIradiosProduction)ProductionBillingReadiness::assertReady($credential);
   $external=(string)($request['customer_id']??'');$sku=(string)($request['product_sku']??'');
   $email=(string)($request['email']??'');$name=(string)($request['name']??'');
-  if($isIradiosProduction&&!Config::iradiosCustomerAllowed($env,$external))
+  if($isIradios&&!Config::iradiosCustomerAllowed($env,$external))
    throw new HttpError(422,'IRADIOS_STAGE_CUSTOMER_SCOPE_INVALID');
   // The new variable-price SKU is accepted ONLY from a signed staging
   // iRadios request. The caller's quote/campaign scope is validated once.

@@ -106,4 +106,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert m.snapshot() == before
 assert m.snapshot("iluma_staging") == staging_before
 assert m.snapshot("iluma_registry") == registry_before
+# Synthetic CI-only production schema test. NO Nexi network or payment calls.
+subprocess.run(["php", "tests/rejected_hpp_repair_mysql.php"],
+               cwd=ROOT, env=env, check=True)
 print("PASS: restore proof, migration, DML, idempotency, drift/occupied refusal, PHP readiness, tenant isolation")

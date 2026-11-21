@@ -50,6 +50,9 @@ final class EnvLoader
             'IRADIOS_LEGACY_STAGE_TO_PLAY_ENABLED',
             'MIT_PRODUCTION_EXECUTION_ENABLED','MIT_PRODUCTION_UAT_APPROVED',
             'BROADCASTER_MIT_PRODUCTION_EXECUTION_ENABLED','BROADCASTER_MIT_PRODUCTION_UAT_APPROVED',
+            // Independent default-OFF approval of provider-verified original HPP repair.
+            'IRADIOS_PRODUCTION_REJECTED_HPP_REPAIR_ENABLED',
+            'IRADIOS_PRODUCTION_REJECTED_HPP_AUTO_ENABLED',
         ], true);
         $lines = file($file, FILE_IGNORE_NEW_LINES);
         if ($lines === false) throw new \RuntimeException('Cannot read secrets');

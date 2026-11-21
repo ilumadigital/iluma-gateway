@@ -114,8 +114,8 @@ putenv('IRADIOS_PRODUCTION_PLAY_ENABLED=0');
 putenv('IRADIOS_LEGACY_STAGE_TO_PLAY_ENABLED=0');
 $order='IL'.str_repeat('A',24);
 check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result',$order,'L-PREM',true)
-  ==='https://stage.iradios.gr/premium?gateway_return=result&order='.$order,
- 'Old production stage-routed return stays stage until explicitly migrated');
+  ==='https://play.iradios.gr/premium?gateway_return=result&order='.$order,
+ 'Even legacy stage-routed live checkout returns to play with play cutover still disabled');
 putenv('IRADIOS_PRODUCTION_PLAY_ENABLED=1');
 check(Config::playProductionAllowed()&&!Config::legacyStageDeliveryToPlay(),
  'New play routing and legacy delivery toggles are independent');
@@ -354,11 +354,71 @@ check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/cancel','IL'.st
  'https://play.iradios.gr/premium?gateway_return=cancel&order=IL'.str_repeat('B',24),'Production callback targets production iRadios only');
 
 check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result','IL'.str_repeat('C',24),'ADV-BUDGET',true) ===
- 'https://stage.iradios.gr/backoffice/agency/campaigns?gateway_return=result&order=IL'.str_repeat('C',24),
- 'New iRadios Production advertising returns to stage by immutable payment marker');
+ 'https://play.iradios.gr/backoffice/agency/campaigns?gateway_return=result&order=IL'.str_repeat('C',24),
+ 'Live Advertising always returns to play agency campaigns, including legacy stage-routed orders');
 check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result','IL'.str_repeat('D',24),'B-PREM',true) ===
- 'https://stage.iradios.gr/backoffice/pro-features?gateway_return=result&order=IL'.str_repeat('D',24),
- 'New iRadios Production broadcaster returns to stage by immutable payment marker');
+ 'https://play.iradios.gr/backoffice/pro-features?gateway_return=result&order=IL'.str_repeat('D',24),
+ 'Live broadcaster always returns to play pro features, including legacy stage-routed orders');
+// Strong tenant isolation: browser return is ALWAYS chosen by the Gateway
+// order's authenticated tenant. Legacy routing markers and financial webhook
+// flags must never override the customer-facing return host.
+$checkoutReturnOrder='IL'.str_repeat('E',24);
+$returnTargets=[
+ 'L-PREM'=>'/premium',
+ 'L-WINBACK-199'=>'/premium',
+ 'B-PREM'=>'/backoffice/pro-features',
+ 'ADD-DSP'=>'/backoffice/pro-features',
+ 'ADD-AN'=>'/backoffice/pro-features',
+ 'ADD-ADS'=>'/backoffice/pro-features',
+ 'BOOST-T-DAY'=>'/backoffice/boost',
+ 'BOOST-T-WEEK'=>'/backoffice/boost',
+ 'BOOST-T-MONTH'=>'/backoffice/boost',
+ 'ADV-BUDGET'=>'/backoffice/agency/campaigns'
+];
+$tenantFlags=['APP_ENV','PRODUCTION_ENABLED','IRADIOS_PRODUCTION_PLAY_ENABLED',
+ 'IRADIOS_LEGACY_STAGE_TO_PLAY_ENABLED'];
+$tenantBefore=[];
+foreach($tenantFlags as $name)$tenantBefore[$name]=getenv($name);
+foreach([false,true] as $playEnabled){
+ foreach([false,true] as $legacyForwarding){
+  putenv('APP_ENV=production');putenv('PRODUCTION_ENABLED=1');
+  putenv('IRADIOS_PRODUCTION_PLAY_ENABLED='.($playEnabled?'1':'0'));
+  putenv('IRADIOS_LEGACY_STAGE_TO_PLAY_ENABLED='.($legacyForwarding?'1':'0'));
+  foreach(['staging'=>'https://stage.iradios.gr',
+           'production'=>'https://play.iradios.gr'] as $tenant=>$host){
+   foreach([false,true] as $stageRouted){
+    foreach(['result','cancel'] as $kind){
+     foreach($returnTargets as $sku=>$route){
+      $actual=\Iluma\Gateway\CheckoutReturn::url($tenant,
+       '/checkout/'.$kind,$checkoutReturnOrder,$sku,$stageRouted);
+      $expected=$host.$route.'?gateway_return='.$kind.'&order='.$checkoutReturnOrder;
+      check($actual===$expected,
+       'Tenant-isolated Nexi browser return '.$tenant.'/'.$kind.'/'.$sku.
+       '/legacy:'.(int)$stageRouted.'/flags:'.(int)$playEnabled.(int)$legacyForwarding);
+     }
+    }
+   }
+  }
+ }
+}
+foreach($tenantBefore as $name=>$value){
+ if($value===false)putenv($name);else putenv($name.'='.$value);
+}
+// The HTTP route looks up the order from Gateway DB and derives tenant
+// internally. No browser-supplied environment, redirect URL or paid state.
+$httpReturnSource=file_get_contents(dirname(__DIR__).'/public/index.php');
+check(str_contains($httpReturnSource,"foreach(['staging','production'] as ". '$candidate)') &&
+ str_contains($httpReturnSource,'CheckoutReturn::url($foundEnv,$path,$order,') &&
+ str_contains($httpReturnSource,'Location: '),
+ 'Nexi return route resolves tenant from stored Gateway order, not query parameters');
+$paymentGatewaySource=file_get_contents(dirname(__DIR__).'/src/NexiClient.php');
+check(str_contains($paymentGatewaySource,"'/checkout/result?order='") &&
+ str_contains($paymentGatewaySource,"'/checkout/cancel?order='"),
+ 'Nexi HPP resultUrl and cancelUrl always return through Gateway order lookup');
+$legacyWorkerSource=file_get_contents(dirname(__DIR__).'/src/Worker.php');
+check(str_contains($legacyWorkerSource,'Config::legacyStageDeliveryToPlay()') &&
+ str_contains($legacyWorkerSource,'Config::stagePaymentWebhook()'),
+ 'Legacy financial webhook forwarding remains a separate, independently controlled operation');
 // A production API credential alone must not enable routing or charge real cards.
 $stageProdPrevious=[];
 foreach(['APP_ENV','PRODUCTION_ENABLED','IRADIOS_STAGE_PRODUCTION_ENABLED',

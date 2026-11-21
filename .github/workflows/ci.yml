@@ -150,6 +150,10 @@ jobs:
             sudo python3 deploy/vps/import-db.py "$database" "$archive" --apply --sha256 "$digest"
           done
           docker compose -f compose.vps.yml exec -T php php bin/vps-ledger-audit.php
+          # Execute both tenant queries against disposable MySQL, including a
+          # production schema without the optional provenance column. This
+          # catches MySQL positional GROUP BY 0 and missing-column regressions.
+          docker compose -f compose.vps.yml exec -T php php bin/audit-pending-outbox.php
           sudo python3 deploy/vps/backup-db.py
           ready=0
           for i in $(seq 1 45); do

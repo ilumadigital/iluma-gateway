@@ -44,12 +44,18 @@ if [[ "${1:-}" == "--image" && "${2:-}" != "" && "$#" == 2 ]]; then
   observed=$(docker run --rm --network none "$2" sha256sum "${paths[@]}") || {
     echo "STOP: required file missing from newly built PHP image" >&2; exit 1;
   }
+  if docker run --rm --network none "$2" test -e /srv/iluma-gateway/app/src/AdminTestCenter.php; then
+    echo "STOP: retired operator checkout source present in new image" >&2; exit 1
+  fi
 elif [[ "$#" == 0 ]]; then
   container=$(docker compose -f compose.vps.yml ps -q php)
   [[ -n "$container" ]] || { echo "STOP: PHP container missing" >&2; exit 1; }
   observed=$(docker exec "$container" sha256sum "${paths[@]}") || {
     echo "STOP: required file missing from active PHP container" >&2; exit 1;
   }
+  if docker exec "$container" test -e /srv/iluma-gateway/app/src/AdminTestCenter.php; then
+    echo "STOP: retired operator checkout source present in active PHP container" >&2; exit 1
+  fi
 else
   echo "Usage: bash deploy/vps/check-source-match.sh [--image IMAGE_ID]" >&2
   exit 2

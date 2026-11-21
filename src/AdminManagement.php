@@ -162,7 +162,7 @@ final class AdminManagement {
    '<button type="submit">Αποθήκευση</button></form></article>';
   $s.='<p><a href="/ilm-admin/?p=keys&application_id='.(int)$a['id'].'">Διαχείριση API Keys</a> · '.
    '<a href="/ilm-admin/?p=products&application_id='.(int)$a['id'].'">Προϊόντα εφαρμογής</a></p>';
-  if(!in_array((string)$a['slug'],['iradiosgr',AdminTestCenter::SLUG],true)) {
+  if(!in_array((string)$a['slug'],['iradiosgr','iluma-internal'],true)) {
    $route=ApplicationRouting::read($env,(int)$a['id']);
    $s.='<article><h2>Payment Routing / '.self::h(strtoupper($env)).'</h2>'.
     '<p class="management-hint">Ρύθμισε το webhook και το return path χωριστά για Stage και Live. Χωρίς έγκυρη ενεργή δρομολόγηση δεν δημιουργείται checkout.</p>'.

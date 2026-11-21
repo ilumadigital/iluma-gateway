@@ -104,7 +104,8 @@ final class NexiClient {
   */
  public function startMit(string $orderId,string $providerCustomerId,
    string $contractId,int $amountCents):array {
-  if(!(($this->environment==='staging'&&Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
+  if(!(($this->environment==='staging'&&Config::stagingTenantRuntimeAllowed()&&
+        Config::get('MIT_SANDBOX_EXECUTION_ENABLED')==='1'&&
         Config::get('MIT_SANDBOX_UAT_APPROVED')==='1')||
        ($this->environment==='production'&&Config::productionMitExecutionAllowed()&&
         Config::get('MIT_PRODUCTION_EXECUTION_ENABLED')==='1'&&

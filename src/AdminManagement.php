@@ -35,7 +35,8 @@ final class AdminManagement {
  private static function app(PDO $registry,int $id):array {
   if($id<1)throw new HttpError(422,'Επίλεξε εφαρμογή.');
   $app=Db::one($registry,'SELECT * FROM applications WHERE id=?',[$id]);
-  if(!$app)throw new HttpError(404,'Η εφαρμογή δεν βρέθηκε.');
+  if(!$app || (string)$app['slug']==='iluma-internal')
+   throw new HttpError(404,'Η εφαρμογή δεν βρέθηκε.');
   return $app;
  }
  private static function appSlug(array $app):string {
@@ -122,7 +123,7 @@ final class AdminManagement {
   $apps=Db::all($reg,"SELECT a.*,
     (SELECT COUNT(*) FROM application_credentials c WHERE c.application_id=a.id AND c.environment='staging' AND c.enabled=1) AS stage_keys,
     (SELECT COUNT(*) FROM application_credentials c WHERE c.application_id=a.id AND c.environment='production' AND c.enabled=1) AS live_keys
-   FROM applications a ORDER BY a.id");
+   FROM applications a WHERE a.slug<>'iluma-internal' ORDER BY a.id");
   $s='<section class="dashboard-section-head"><div><h2>Εφαρμογές Gateway</h2><p>Οι δύο βάσεις και τα API Keys είναι ανεξάρτητα.</p></div></section>';
   $s.='<div class="dashboard-table-scroll"><table><tr><th>Εφαρμογή</th><th>Staging</th><th>Production</th><th>Κατάσταση</th><th></th></tr>';
   foreach($apps as $a) {
@@ -178,7 +179,7 @@ final class AdminManagement {
   return $s;
  }
  public static function products(PDO $reg,string $env,string $csrf,int $chosen=0):string {
-  $apps=Db::all($reg,'SELECT id,slug,name FROM applications ORDER BY name');
+  $apps=Db::all($reg,'SELECT id,slug,name FROM applications WHERE slug<>'iluma-internal' ORDER BY name');
   if(!$apps)return '<p>Πρόσθεσε πρώτα μία εφαρμογή.</p>';
   $found=false;
   foreach($apps as $a)if((int)$a['id']===$chosen)$found=true;

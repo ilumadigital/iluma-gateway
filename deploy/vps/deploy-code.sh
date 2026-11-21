@@ -13,6 +13,8 @@ echo "CHECKOUT: $revision"
 "${compose[@]}" build php web
 php_image=$(docker image inspect iluma-gateway-php:local --format '{{.Id}}')
 web_image=$(docker image inspect iluma_gateway-web:latest --format '{{.Id}}')
+# A green HTTP health check is not proof that the image contains Git HEAD.
+bash deploy/vps/check-source-match.sh --image "$php_image"
 # Offline tests do not see the private ENV and cannot call a provider.
 docker run --rm --network none "$php_image" php tests/run.php
 # Check the new runtime against mounted config BEFORE replacing the service.
@@ -29,6 +31,8 @@ web_container=$("${compose[@]}" ps -q web)
 [[ -n "$php_container" && -n "$web_container" ]]
 [[ "$(docker inspect "$php_container" --format '{{.Image}}')" == "$php_image" ]]
 [[ "$(docker inspect "$web_container" --format '{{.Image}}')" == "$web_image" ]]
+# Detect stale/cached code in the actual live container, not only image tags.
+bash deploy/vps/check-source-match.sh
 for attempt in {1..30}; do
   status=$(curl --silent --max-time 2 --output /dev/null --write-out '%{http_code}' \
     -H 'Host: gateway.iluma.gr' http://127.0.0.1:5561/ilm-admin/ || true)

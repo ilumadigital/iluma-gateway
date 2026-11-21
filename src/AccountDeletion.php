@@ -12,10 +12,10 @@ final class AccountDeletion {
   if(!in_array(($credential['environment']??''),['staging','production'],true)
      ||($credential['slug']??'')!=='iradiosgr'
      ||(($credential['environment']??'')==='staging'&&
-        (Config::get('APP_ENV')==='production'||Config::get('PRODUCTION_ENABLED')==='1'))
-     ||(($credential['environment']??'')==='production'&&!Config::stageProductionAllowed()))
+        !Config::stagingTenantRuntimeAllowed())
+     ||(($credential['environment']??'')==='production'&&!Config::productionIradiosAllowed()))
    throw new HttpError(403,'ACCOUNT_DELETION_STAGING_ONLY');
-  if(!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
+  if(!Config::iradiosCustomerAllowed($credential['environment'],$external))
    throw new HttpError(422,'CUSTOMER_SCOPE_INVALID');
 
   $db=Db::get($credential['environment']);$app=(int)$credential['application_id'];

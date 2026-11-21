@@ -17,12 +17,15 @@ final class CheckoutReturn {
    return 'https://gateway.iluma.gr/ilm-admin/?p=test-center&order='.$orderId;
   if($applicationSlug!=='iradiosgr')
    return ApplicationRouting::returnUrl($environment,$applicationId,$orderId,$path==='/checkout/cancel'?'cancel':'result');
-  $returnToStage=$environment==='staging'||($environment==='production'&&$stageRouted&&!Config::legacyStageDeliveryToPlay());
-  $origin=$returnToStage?'https://stage.iradios.gr':'https://play.iradios.gr';
+  // A browser return is NOT a financial webhook. Only the authenticated
+  // Gateway tenant that owns the order decides the iRadios destination.
+  // Historical stage-routed production orders still belong to Nexi Live and
+  // must return to play; retain $stageRouted for call-site compatibility.
+  $origin=$environment==='staging'?'https://stage.iradios.gr':'https://play.iradios.gr';
   $kind=$path==='/checkout/cancel'?'cancel':'result';
   // The caller looks up the product from the stored Gateway order; the
   // browser cannot choose or override the return destination.
-  $route=$returnToStage&&$sku==='ADV-BUDGET'
+  $route=$sku==='ADV-BUDGET'
    ?'/backoffice/agency/campaigns':
    (str_starts_with((string)$sku,'BOOST-')?'/backoffice/boost':
     (in_array($sku,['B-PREM','ADD-DSP','ADD-AN','ADD-ADS'],true)

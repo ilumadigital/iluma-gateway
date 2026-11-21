@@ -72,7 +72,7 @@ final class BroadcasterMandates {
  private static function target(array $credential,array $body):array {
   if(!self::isStaging($credential))throw new HttpError(403,'BROADCASTER_STAGING_ONLY');
   $external=$body['customer_id']??null;$sku=$body['product_sku']??null;
-  if(!is_string($external)||!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external)||
+  if(!is_string($external)||!Config::iradiosCustomerAllowed($credential['environment'],$external)||
     !is_string($sku)||!array_key_exists($sku,self::PRICE))
    throw new HttpError(422,'BROADCASTER_TARGET_INVALID');
   $resource=self::resource($sku,$body['resource_id']??null);

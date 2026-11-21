@@ -100,6 +100,7 @@ jobs:
           python3 tests/clean_production_launch.py
           bash -n deploy/vps/check-readiness.sh
           bash -n deploy/vps/deploy-code.sh
+          bash -n deploy/vps/check-source-match.sh
           docker compose -f compose.vps.yml config --quiet
           python3 tests/vps_topology.py
 
@@ -110,6 +111,8 @@ jobs:
         run: |
           docker run --rm iluma-gateway-php:ci php -r 'foreach(["pdo_mysql","sodium","curl","json"] as $ext){if(!extension_loaded($ext))exit(1);}'
           docker run --rm iluma-gateway-php:ci php bin/check-source-integrity.php
+          docker run --rm iluma-gateway-php:ci test -f bin/iradios-return-doctor.php
+          docker run --rm iluma-gateway-php:ci test -f bin/check-webhook-signing.php
           docker run --rm iluma-gateway-php:ci php tests/run.php
 
       - name: Build and lint internal Nginx

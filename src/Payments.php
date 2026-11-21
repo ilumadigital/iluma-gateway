@@ -9,7 +9,7 @@ final class Payments {
  public static function checkout(array $credential,array $request,string $key):array {
   $env=$credential['environment'];$db=Db::get($env);$application=(int)$credential['application_id'];
   // A configured, approved HTTPS route is mandatory for third-party apps.
-  // Built-in iRadios and internal diagnostic retain their isolated paths.
+  // Built-in iRadios retains its isolated path; the retired internal app is denied.
   ApplicationRouting::assertCheckout($credential);
   $isIradios=($credential['slug']??'')==='iradiosgr';
   $isIradiosProduction=$env==='production'&&$isIradios;

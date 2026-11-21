@@ -1014,6 +1014,30 @@ check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result',$intern
   'ILUMA-TEST-100',false,'iluma-internal')
   ==='https://gateway.iluma.gr/ilm-admin/?p=payments',
   'Historical internal return stays in private Gateway payments, never iRadios');
+$internalCheckoutDenied=false;
+try {
+ \Iluma\Gateway\ApplicationRouting::assertCheckout([
+  'environment'=>'staging','application_id'=>1,'slug'=>'iluma-internal'
+ ]);
+} catch (\Iluma\Gateway\HttpError $e) {
+ $internalCheckoutDenied=$e->status===403;
+}
+check($internalCheckoutDenied,
+ 'Retired internal application cannot create checkout, even via privileged credentials');
+// Audit ALL active PHP entrypoints, not just known references. Missing class
+// references are otherwise invisible to php -l until that branch executes.
+$legacyReferenceFound=false;
+foreach(['src','public','bin'] as $activeDir){
+ foreach(glob(dirname(__DIR__).'/'.$activeDir.'/*.php')?:[] as $file){
+  $source=file_get_contents($file);
+  if($source===false || str_contains($source,'AdminTestCenter::')){
+   $legacyReferenceFound=true;break 2;
+  }
+ }
+}
+check(!$legacyReferenceFound,
+ 'All active PHP entrypoints are free of removed internal checkout class references');
+
 check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result',$internalOrder,
   'L-PREM',false,'iradiosgr')==='https://play.iradios.gr/premium?gateway_return=result&order='.$internalOrder,
   'iRadios production return remains unchanged');

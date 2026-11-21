@@ -55,7 +55,7 @@ final class ApplicationRouting {
  public static function save(PDO $registry,string $env,int $appId,array $post):string {
   if(!in_array($env,['staging','production'],true))throw new HttpError(422,'Invalid environment');
   $app=self::app($registry,$appId);
-  if(in_array($app['slug'],['iradiosgr',AdminTestCenter::SLUG],true))
+  if(in_array($app['slug'],['iradiosgr','iluma-internal'],true))
    throw new HttpError(403,'Η υπάρχουσα διαδρομή αυτής της εφαρμογής είναι προστατευμένη.');
   $enabled=isset($post['route_enabled']);
   $url=trim((string)($post['webhook_url']??''));
@@ -80,7 +80,8 @@ final class ApplicationRouting {
  }
  public static function assertCheckout(array $credential):void {
   $slug=(string)($credential['slug']??'');
-  if($slug==='iradiosgr'||$slug===AdminTestCenter::SLUG)return;
+  if($slug==='iluma-internal')throw new HttpError(403,'Retired application checkout is disabled');
+   if($slug==='iradiosgr')return;
   $env=(string)($credential['environment']??'');
   $id=(int)($credential['application_id']??0);
   if($env==='production'){

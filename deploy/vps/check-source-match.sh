@@ -6,14 +6,22 @@ set -Eeuo pipefail
 cd /srv/iluma-gateway/app
 [[ "$(id -u)" == "0" ]] || { echo "STOP: run as root" >&2; exit 1; }
 files=(
+  bin/audit-pending-outbox.php
   bin/check-webhook-signing.php
   bin/iradios-return-doctor.php
+  bin/reconcile-rejected-hpp.php
   bin/vps-ledger-audit.php
   bin/manage.php
   bin/work.php
+  src/AccountDeletion.php
+  src/AdvertisingBudget.php
   src/Config.php
   src/EnvLoader.php
+  src/NexiClient.php
   src/Payments.php
+  src/RejectedHppRepair.php
+  src/SavedCards.php
+  src/Winback.php
   src/Worker.php
   src/RecurringMandates.php
   src/BroadcasterMandates.php

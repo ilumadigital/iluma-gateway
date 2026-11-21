@@ -336,9 +336,9 @@ try {
  } elseif($p==='refunds'){
   $content.=\Iluma\Gateway\AdminMonitoring::refunds($env);
  } elseif($p==='keys'){
-  $keys=Db::all($reg,'SELECT c.id,c.key_prefix,c.created_at,c.last_used_at,c.enabled,a.name
+  $keys=Db::all($reg,"SELECT c.id,c.key_prefix,c.created_at,c.last_used_at,c.enabled,a.name
    FROM application_credentials c JOIN applications a ON a.id=c.application_id
-   WHERE c.environment=? AND a.slug<>'iluma-internal' ORDER BY c.id DESC',[$env]);
+   WHERE c.environment=? AND a.slug<>'iluma-internal' ORDER BY c.id DESC",[$env]);
   $apps=Db::all($reg,"SELECT id,name FROM applications WHERE enabled=1 AND slug<>'iluma-internal' ORDER BY name");
   $selected=(int)($_GET['application_id']??0);
   $content.='<form method="post" data-stepup="Δημιουργία API Key"><input type="hidden" name="_csrf" value="'.$csrf.'"><input type="hidden" name="action" value="key-create"><label>Εφαρμογή<select name="application_id" required>';

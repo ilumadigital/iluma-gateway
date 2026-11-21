@@ -1024,12 +1024,19 @@ try {
 }
 check($internalCheckoutDenied,
  'Retired internal application cannot create checkout, even via privileged credentials');
-$securitySource=file_get_contents(dirname(__DIR__).'/src/Security.php');
-$routingSource=file_get_contents(dirname(__DIR__).'/src/ApplicationRouting.php');
-check($securitySource!==false && $routingSource!==false &&
-  !str_contains($securitySource,'AdminTestCenter::') &&
-  !str_contains($routingSource,'AdminTestCenter::'),
-  'Retired PHP checkout class is not referenced by security or routing');
+// Audit ALL active PHP entrypoints, not just known references. Missing class
+// references are otherwise invisible to php -l until that branch executes.
+$legacyReferenceFound=false;
+foreach(['src','public','bin'] as $activeDir){
+ foreach(glob(dirname(__DIR__).'/'.$activeDir.'/*.php')?:[] as $file){
+  $source=file_get_contents($file);
+  if($source===false || str_contains($source,'AdminTestCenter::')){
+   $legacyReferenceFound=true;break 2;
+  }
+ }
+}
+check(!$legacyReferenceFound,
+ 'All active PHP entrypoints are free of removed internal checkout class references');
 
 check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result',$internalOrder,
   'L-PREM',false,'iradiosgr')==='https://play.iradios.gr/premium?gateway_return=result&order='.$internalOrder,

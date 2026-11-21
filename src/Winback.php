@@ -82,7 +82,7 @@ final class Winback {
  /** Account scoped, HMAC-authenticated, read-only provider ledger state. */
  public static function status(array $credential,string $external):array{
   if(!in_array($credential['environment'],['staging','production'],true)||($credential['slug']??'')!=='iradiosgr'||($credential['environment']==='production'&&!Config::productionIradiosAllowed())||
-     !preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
+     !Config::iradiosCustomerAllowed($credential['environment'],$external))
    throw new HttpError(403,'WINBACK_STAGING_ONLY');
   $db=Db::get($credential['environment']);
   if(!self::ready($db))return ['state'=>'unavailable','used'=>false];

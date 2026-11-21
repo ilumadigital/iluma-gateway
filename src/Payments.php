@@ -19,7 +19,7 @@ final class Payments {
   if($isIradiosProduction)ProductionBillingReadiness::assertReady($credential);
   $external=(string)($request['customer_id']??'');$sku=(string)($request['product_sku']??'');
   $email=(string)($request['email']??'');$name=(string)($request['name']??'');
-  if($isIradiosProduction&&!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
+  if($isIradiosProduction&&!Config::iradiosCustomerAllowed($env,$external))
    throw new HttpError(422,'IRADIOS_STAGE_CUSTOMER_SCOPE_INVALID');
   // The new variable-price SKU is accepted ONLY from a signed staging
   // iRadios request. The caller's quote/campaign scope is validated once.
@@ -225,7 +225,7 @@ final class Payments {
  }
  public static function history(array $credential,string $external):array {
   if(!in_array($credential['environment'],['staging','production'],true)||($credential['slug']??'')!=='iradiosgr'||
-     !preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external))
+     !Config::iradiosCustomerAllowed($credential['environment'],$external))
    throw new HttpError(403,'STAGING_ONLY');
   $db=Db::get($credential['environment']);
   $rows=Db::all($db,"SELECT p.id AS payment_id,p.order_id,p.status,p.amount_cents,p.currency,

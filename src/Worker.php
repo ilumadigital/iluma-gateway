@@ -59,7 +59,7 @@ final class Worker {
    if(!Db::exec($db,"UPDATE outgoing_events SET status='sending',next_attempt_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 2 MINUTE) WHERE id=? AND status='pending'",[$event['id']]))continue;
    $code=null;try {
     $app=Db::one(Db::get('registry'),'SELECT slug FROM applications WHERE id=?',[(int)$event['application_id']]);
-    if(($app['slug']??null)===AdminTestCenter::SLUG){
+    if(($app['slug']??null)==='iluma-internal'){
      $status='delivered';$note='internal_test';$code=204;
     } else {
     $stageRouted=$env==='production'&&!empty($event['iradios_stage_routed']);

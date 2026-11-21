@@ -10,6 +10,7 @@ files=(
   bin/check-webhook-signing.php
   bin/iradios-return-doctor.php
   bin/reconcile-rejected-hpp.php
+  bin/retry-staging-webhooks.php
   bin/vps-ledger-audit.php
   bin/manage.php
   bin/work.php

@@ -69,7 +69,7 @@ final class RejectedHppRepair {
   $customer=Db::one($db,'SELECT id,external_user_id FROM customers
     WHERE id=? AND application_id=? LIMIT 1',
     [$p['customer_id']??null,$application]);
-  if(!$customer || !preg_match('/^iradios-stage-[a-f0-9]{24}$/D',
+  if(!$customer || !Config::iradiosCustomerAllowed($env,
     (string)$customer['external_user_id']))return 'CUSTOMER_SCOPE_MISMATCH';
 
   $product=Db::one($db,'SELECT sku,amount_cents,currency FROM products

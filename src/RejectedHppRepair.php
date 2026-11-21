@@ -84,9 +84,9 @@ final class RejectedHppRepair {
    return 'BROADCASTER_PRICE_MISMATCH';
   if($listener && !in_array($amount, $sku==='L-PREM'?[399]:[199],true))
    return 'LISTENER_PRICE_MISMATCH';
-  if($broadcaster && !preg_match('/^iradios-bstage-[a-f0-9]{24}-[a-f0-9-]{36}$/iD',
+  if($broadcaster && !preg_match('/^iradios-b(?:stage|play)-[a-f0-9]{24}-[a-f0-9-]{36}$/iD',
    (string)($p['request_key']??'')))return 'REQUEST_SCOPE_MISMATCH';
-  if($listener && !preg_match('/^iradios-stage-[a-f0-9]{24}-[a-f0-9-]{36}$/iD',
+  if($listener && !preg_match('/^iradios-(?:stage|play)-[a-f0-9]{24}-[a-f0-9-]{36}$/iD',
    (string)($p['request_key']??'')))return 'REQUEST_SCOPE_MISMATCH';
   if(!str_contains((string)$p['request_key'],(string)substr($customer['external_user_id'],-24)))
    return 'REQUEST_CUSTOMER_MISMATCH';
@@ -169,7 +169,8 @@ final class RejectedHppRepair {
     JOIN customers c ON c.id=p.customer_id AND c.application_id=p.application_id
     WHERE p.application_id=? AND pr.application_id=? AND c.application_id=?
       AND p.status='unknown' AND p.created_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 2 MINUTE)
-      AND c.external_user_id LIKE 'iradios-stage-%'".$suffix."
+      AND (c.external_user_id LIKE 'iradios-stage-%'".
+       ($env==='production'?" OR c.external_user_id LIKE 'iradios-play-%'":"").")".$suffix."
       AND EXISTS (SELECT 1 FROM payment_logs l WHERE l.payment_id=p.id AND
        (l.event_type='hpp_rejected_400' OR
         (l.event_type='unknown' AND l.message_gr LIKE

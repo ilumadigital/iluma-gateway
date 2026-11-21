@@ -13,8 +13,10 @@ final class CheckoutReturn {
      !preg_match('/^IL[A-F0-9]{24}$/D',$orderId)){
    throw new \InvalidArgumentException('Invalid checkout return');
   }
-  if($applicationSlug===AdminTestCenter::SLUG)
-   return 'https://gateway.iluma.gr/ilm-admin/?p=test-center&order='.$orderId;
+  // Historical retired operator payments must never be redirected to iRadios.
+  // This is only a legacy browser-return destination; no test checkout remains.
+  if($applicationSlug==='iluma-internal')
+   return 'https://gateway.iluma.gr/ilm-admin/?p=payments';
   if($applicationSlug!=='iradiosgr')
    return ApplicationRouting::returnUrl($environment,$applicationId,$orderId,$path==='/checkout/cancel'?'cancel':'result');
   // A browser return is NOT a financial webhook. Only the authenticated

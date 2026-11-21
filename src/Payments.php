@@ -338,7 +338,7 @@ final class Payments {
       $body=array_merge($body,$advertising);
     }
     $app=Db::one(Db::get('registry'),'SELECT slug FROM applications WHERE id=?',[(int)$p['application_id']]);
-    if(!in_array((string)($app['slug']??''),['iradiosgr',AdminTestCenter::SLUG],true)){
+    if(!in_array((string)($app['slug']??''),['iradiosgr','iluma-internal'],true)){
      $customer=Db::one($db,'SELECT external_user_id FROM customers WHERE id=? AND application_id=?',
       [$p['customer_id'],$p['application_id']]);
      if($customer)$body['external_user_id']=(string)$customer['external_user_id'];

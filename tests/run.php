@@ -998,12 +998,22 @@ if($oldAdvertisingFlag===false)putenv('ADVERTISING_SANDBOX_ENABLED');
 else putenv('ADVERTISING_SANDBOX_ENABLED='.$oldAdvertisingFlag);
 if($oldAppEnv===false)putenv('APP_ENV');else putenv('APP_ENV='.$oldAppEnv);
 if($oldProdFlag===false)putenv('PRODUCTION_ENABLED');else putenv('PRODUCTION_ENABLED='.$oldProdFlag);
-// Internal diagnostic return must stay on Gateway, never grant iRadios entitlements.
+// The retired one-euro test checkout must never be executable again.
+// Preserve browser-return isolation for old receipts and keep historical
+// database records intact (neither a new payment nor an entitlement).
 $internalOrder='IL'.str_repeat('A',24);
+$adminWithoutTest=file_get_contents(dirname(__DIR__).'/src/AdminApplication.php');
+check(!is_file(dirname(__DIR__).'/src/AdminTestCenter.php') &&
+  $adminWithoutTest!==false &&
+  !str_contains($adminWithoutTest,'test-center') &&
+  !str_contains($adminWithoutTest,'test-prepare') &&
+  !str_contains($adminWithoutTest,'test-start') &&
+  !str_contains($adminWithoutTest,'test-new'),
+  'Retired operator checkout code and Admin route are absent');
 check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result',$internalOrder,
-  \Iluma\Gateway\AdminTestCenter::SKU,false,\Iluma\Gateway\AdminTestCenter::SLUG)
-  ==='https://gateway.iluma.gr/ilm-admin/?p=test-center&order='.$internalOrder,
-  'Internal test return remains on ILUMA admin');
+  'ILUMA-TEST-100',false,'iluma-internal')
+  ==='https://gateway.iluma.gr/ilm-admin/?p=payments',
+  'Historical internal return stays in private Gateway payments, never iRadios');
 check(\Iluma\Gateway\CheckoutReturn::url('production','/checkout/result',$internalOrder,
   'L-PREM',false,'iradiosgr')==='https://play.iradios.gr/premium?gateway_return=result&order='.$internalOrder,
   'iRadios production return remains unchanged');

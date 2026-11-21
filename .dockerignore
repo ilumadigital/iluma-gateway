@@ -34,3 +34,6 @@ node_modules/
 !database/migrations/*.sql
 __pycache__/
 **/__pycache__/
+
+# VPS-local operator wrapper is untracked; never bundle into immutable runtime.
+iluma-g-dev.sh

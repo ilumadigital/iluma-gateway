@@ -46,7 +46,7 @@ final class AdvertisingBudget {
   $campaign=$request['campaign_id']??null;
   $quote=$request['quote_id']??null;
   $cents=$request['amount_cents']??null;
-  if(!is_string($external)||!preg_match('/^iradios-stage-[a-f0-9]{24}$/D',$external)||
+  if(!is_string($external)||!Config::iradiosCustomerAllowed($credential['environment'],$external)||
      !is_string($campaign)||!preg_match('/^[a-f0-9]{24}$/D',$campaign)||
      !is_string($quote)||!preg_match('/^[a-f0-9]{24}$/D',$quote)||
      !is_int($cents)||$cents<100||$cents>100000000||
